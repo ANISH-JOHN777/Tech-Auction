@@ -1,0 +1,15 @@
+2026-09-23 03:00:12 [INFO] AUTH_SERVICE: Server initialized on port 5001
+2026-09-23 03:05:22 [INFO] AUTH_SUCCESS: user1@securevault.local logged in successfully from IP 192.168.1.50
+2026-09-23 03:10:01 [WARN] AUTH_FAILURE: Failed login attempt for user2@securevault.local from IP 192.168.1.105 (Attempt 1/50)
+2026-09-23 03:10:03 [WARN] AUTH_FAILURE: Failed login attempt for user2@securevault.local from IP 192.168.1.105 (Attempt 2/50)
+2026-09-23 03:10:05 [WARN] AUTH_FAILURE: Failed login attempt for user2@securevault.local from IP 192.168.1.105 (Attempt 3/50)
+2026-09-23 03:10:08 [WARN] AUTH_FAILURE: Failed login attempt for user2@securevault.local from IP 192.168.1.105 (Attempt 4/50)
+2026-09-23 03:10:12 [WARN] AUTH_FAILURE: Failed login attempt for user2@securevault.local from IP 192.168.1.105 (Attempt 5/50)
+2026-09-23 03:10:15 [WARN] AUTH_FAILURE: Failed login attempt for user2@securevault.local from IP 192.168.1.105 (Attempt 6/50)
+2026-09-23 03:10:18 [WARN] AUTH_FAILURE: Failed login attempt for user2@securevault.local from IP 192.168.1.105 (Attempt 7/50)
+2026-09-23 03:10:22 [WARN] AUTH_FAILURE: Failed login attempt for user2@securevault.local from IP 192.168.1.105 (Attempt 8/50)
+2026-09-23 03:10:25 [WARN] AUTH_FAILURE: Failed login attempt for user2@securevault.local from IP 192.168.1.105 (Attempt 9/50)
+2026-09-23 03:10:29 [WARN] AUTH_FAILURE: Failed login attempt for user2@securevault.local from IP 192.168.1.105 (Attempt 10/50)
+2026-09-23 03:14:20 [WARN] AUTH_FAILURE: Failed login attempt for user2@securevault.local from IP 192.168.1.105 (Attempt 49/50)
+2026-09-23 03:14:22 [ALERT] AUTH_SUCCESS: Password guessed successfully for user2@securevault.local from IP 192.168.1.105 after 49 failures!
+2026-09-23 03:20:00 [INFO] AUTH_SUCCESS: admin@securevault.local logged in from IP 192.168.1.10
