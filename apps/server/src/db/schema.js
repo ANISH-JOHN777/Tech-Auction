@@ -148,6 +148,18 @@ export async function initializeSchema(db) {
       FOREIGN KEY (team_id) REFERENCES teams(id)
     );
 
+    CREATE TABLE IF NOT EXISTS workspace_submission_snapshots (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      submission_id INTEGER NOT NULL,
+      team_id INTEGER NOT NULL,
+      track TEXT NOT NULL,
+      file_path TEXT NOT NULL,
+      content TEXT NOT NULL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (submission_id) REFERENCES submissions(id) ON DELETE CASCADE,
+      FOREIGN KEY (team_id) REFERENCES teams(id)
+    );
+
     CREATE TABLE IF NOT EXISTS scores (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       submission_id INTEGER NOT NULL,

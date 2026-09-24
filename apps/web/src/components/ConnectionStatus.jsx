@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { CheckCircle, AlertTriangle } from 'lucide-react';
 import { socket } from '../services/socket';
 
 export default function ConnectionStatus() {
@@ -57,7 +58,11 @@ export default function ConnectionStatus() {
     <div className="fixed bottom-4 right-4 z-50 flex flex-col items-end gap-2 pointer-events-none">
       {toast && (
         <div className="pointer-events-auto bg-zinc-900 border border-zinc-700 text-zinc-200 text-xs font-mono px-3 py-2 rounded-lg shadow-xl animate-fade-in flex items-center gap-2">
-          <span>{status === 'CONNECTED' ? '🟢' : '⚠️'}</span>
+          {status === 'CONNECTED' ? (
+            <CheckCircle className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+          ) : (
+            <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+          )}
           <span>{toast}</span>
         </div>
       )}

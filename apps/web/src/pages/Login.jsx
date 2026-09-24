@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { AlertTriangle } from 'lucide-react';
 import { api } from '../services/api';
 
 export default function Login({ onLogin, error }) {
@@ -83,8 +84,9 @@ export default function Login({ onLogin, error }) {
         </div>
 
         {friendlyError && (
-          <div className="mb-6 bg-red-500/10 border border-red-500/30 text-red-400 text-xs p-3 rounded-lg text-center font-mono">
-            ⚠️ {friendlyError}
+          <div className="mb-6 bg-red-500/10 border border-red-500/30 text-red-400 text-xs p-3 rounded-lg text-center font-mono flex items-center justify-center gap-2">
+            <AlertTriangle className="w-4 h-4 shrink-0 text-red-400" />
+            <span>{friendlyError}</span>
           </div>
         )}
 

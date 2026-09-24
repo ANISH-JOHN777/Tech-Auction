@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { AlertTriangle, Lock, Trophy } from 'lucide-react';
 import { api } from '../../services/api';
 
 export default function EventControls() {
@@ -188,9 +189,10 @@ export default function EventControls() {
           <button
             onClick={() => setResetModal(true)}
             disabled={saving}
-            className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-amber-400 border border-amber-500/40 rounded font-bold text-xs uppercase ml-auto"
+            className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-amber-400 border border-amber-500/40 rounded font-bold text-xs uppercase ml-auto flex items-center gap-1.5"
           >
-            ⚠️ RESET DEMO DATA
+            <AlertTriangle className="w-3.5 h-3.5" />
+            <span>RESET DEMO DATA</span>
           </button>
         </div>
       </div>
@@ -250,13 +252,23 @@ export default function EventControls() {
           <button
             onClick={handleToggleLeaderboard}
             disabled={saving}
-            className={`w-full py-3 rounded-lg font-bold text-xs uppercase tracking-wider transition ${
+            className={`w-full py-3 rounded-lg font-bold text-xs uppercase tracking-wider transition flex items-center justify-center gap-2 ${
               settings.leaderboard_visible === 'true'
                 ? 'bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/40'
                 : 'gold-button shadow-lg'
             }`}
           >
-            {settings.leaderboard_visible === 'true' ? '🔒 HIDE LEADERBOARD FROM STUDENTS' : '🏆 SHOW LEADERBOARD TO STUDENTS'}
+            {settings.leaderboard_visible === 'true' ? (
+              <>
+                <Lock className="w-4 h-4" />
+                <span>HIDE LEADERBOARD FROM STUDENTS</span>
+              </>
+            ) : (
+              <>
+                <Trophy className="w-4 h-4" />
+                <span>SHOW LEADERBOARD TO STUDENTS</span>
+              </>
+            )}
           </button>
         </div>
 

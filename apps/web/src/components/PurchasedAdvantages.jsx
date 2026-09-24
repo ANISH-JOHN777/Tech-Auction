@@ -1,4 +1,5 @@
 import React from 'react';
+import { Award } from 'lucide-react';
 
 export default function PurchasedAdvantages({ wallet, team }) {
   // Extract won catalog items from wallet or transactions if available
@@ -8,7 +9,7 @@ export default function PurchasedAdvantages({ wallet, team }) {
     <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-xl shadow-lg space-y-4">
       <div className="flex justify-between items-center pb-3 border-b border-zinc-800">
         <div className="flex items-center gap-2">
-          <span className="text-amber-500 text-lg">🎖️</span>
+          <Award className="w-5 h-5 text-amber-500" />
           <h3 className="text-sm font-black text-white uppercase tracking-wider">
             YOUR AUCTION ADVANTAGES
           </h3>

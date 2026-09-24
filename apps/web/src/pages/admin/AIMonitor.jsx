@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { RefreshCw } from 'lucide-react';
 import { api } from '../../services/api';
 
 export default function AIMonitor() {
@@ -46,9 +47,10 @@ export default function AIMonitor() {
         </div>
         <button
           onClick={loadSessions}
-          className="text-xs bg-zinc-800 hover:bg-zinc-700 text-amber-400 font-bold px-3 py-1.5 rounded border border-zinc-700"
+          className="text-xs bg-zinc-800 hover:bg-zinc-700 text-amber-400 font-bold px-3 py-1.5 rounded border border-zinc-700 flex items-center gap-1.5"
         >
-          🔄 REFRESH
+          <RefreshCw className="w-3.5 h-3.5" />
+          <span>REFRESH</span>
         </button>
       </div>
 

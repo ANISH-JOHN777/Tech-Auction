@@ -1,8 +1,9 @@
-import { getClient } from '../db/postgres.js';
+import { getClient, query } from '../db/postgres.js';
 import { eventRepository } from '../db/repositories/event.repository.js';
 import { submissionRepository } from '../db/repositories/submission.repository.js';
 import { scoreRepository } from '../db/repositories/score.repository.js';
 import { auditRepository } from '../db/repositories/audit.repository.js';
+import { getWorkspaceFiles } from './workspace.service.js';
 
 export async function getEventSettings() {
   return await eventRepository.getSettings();
@@ -21,9 +22,23 @@ export async function getSubmissionForTeam(teamId, track) {
   }
 
   const score = await scoreRepository.findBySubmissionId(submission.id);
+
+  let workspaceFiles = null;
+  if (submission.submission_type === 'WORKSPACE' || submission.status === 'FINAL') {
+    const snapRes = await query(
+      'SELECT file_path, content, created_at FROM workspace_submission_snapshots WHERE submission_id = $1 ORDER BY file_path ASC',
+      [submission.id]
+    );
+    if (snapRes.rows.length > 0) {
+      workspaceFiles = snapRes.rows;
+    }
+  }
+
   return {
     ...submission,
     score: score || null,
+    workspaceFiles,
+    isLocked: submission.status === 'FINAL',
   };
 }
 
@@ -56,12 +71,19 @@ export async function createOrUpdateSubmission({ team, submissionType = 'FILE', 
     }
   }
 
+  // Pre-fetch workspace state before transaction if final submission
+  let workspaceSnapshot = null;
+  if (isFinal || submissionType === 'WORKSPACE') {
+    workspaceSnapshot = await getWorkspaceFiles(team.id, track);
+  }
+
   // Atomic PostgreSQL transaction with row locking
   const client = await getClient();
   let submissionId;
   let version = 1;
   const now = new Date().toISOString();
   const status = isFinal ? 'FINAL' : 'SUBMITTED';
+  const finalRef = submissionReference || (submissionType === 'WORKSPACE' ? 'In-Portal Debug Workspace Solution' : 'Submission package recorded');
 
   try {
     await client.query('BEGIN');
@@ -84,7 +106,7 @@ export async function createOrUpdateSubmission({ team, submissionType = 'FILE', 
       version = (existing.submission_version || 1) + 1;
       const updateRes = await client.query(
         `UPDATE submissions SET submission_type = $1, submission_reference = $2, submitted_at = $3, status = $4, submission_version = $5, updated_at = $3 WHERE id = $6 RETURNING id`,
-        [submissionType, submissionReference || 'Submission package recorded', now, status, version, existing.id]
+        [submissionType, finalRef, now, status, version, existing.id]
       );
       submissionId = updateRes.rows[0].id;
     } else {
@@ -92,9 +114,21 @@ export async function createOrUpdateSubmission({ team, submissionType = 'FILE', 
         `INSERT INTO submissions (team_id, track, submission_version, submission_type, submission_reference, submitted_at, status, created_at, updated_at)
          VALUES ($1, $2, 1, $3, $4, $5, $6, $5, $5)
          RETURNING id`,
-        [team.id, track, submissionType, submissionReference || 'Submission package recorded', now, status]
+        [team.id, track, submissionType, finalRef, now, status]
       );
       submissionId = insertRes.rows[0].id;
+    }
+
+    // Capture workspace file snapshot if final workspace submission
+    if (workspaceSnapshot && workspaceSnapshot.files) {
+      await client.query('DELETE FROM workspace_submission_snapshots WHERE submission_id = $1', [submissionId]);
+      for (const f of workspaceSnapshot.files) {
+        await client.query(
+          `INSERT INTO workspace_submission_snapshots (submission_id, team_id, track, file_path, content, created_at)
+           VALUES ($1, $2, $3, $4, $5, NOW())`,
+          [submissionId, team.id, track, f.path, f.content || '']
+        );
+      }
     }
 
     // Log evaluation audit event inside transaction
@@ -135,11 +169,16 @@ export async function getAdminSubmissionById(submissionId) {
 
   const score = await scoreRepository.findBySubmissionId(submissionId);
   const events = await auditRepository.getEvaluationEventsForSubmission(submissionId);
+  const snapRes = await query(
+    'SELECT file_path, content, created_at FROM workspace_submission_snapshots WHERE submission_id = $1 ORDER BY file_path ASC',
+    [submissionId]
+  );
 
   return {
     ...submission,
     score: score || null,
     events,
+    workspaceFiles: snapRes.rows || [],
   };
 }
 

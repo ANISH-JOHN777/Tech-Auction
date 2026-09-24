@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { AlertTriangle } from 'lucide-react';
 
 export default function AuctionPanel({ challenge, roomState, wallet, onBid, bidding, error }) {
   const currentItem = roomState?.currentItem;
@@ -126,8 +127,9 @@ export default function AuctionPanel({ challenge, roomState, wallet, onBid, bidd
           </div>
 
           {error && (
-            <div className="bg-red-500/10 border border-red-500/30 text-red-400 text-xs p-3 rounded-lg font-mono">
-              ⚠️ {error}
+            <div className="bg-red-500/10 border border-red-500/30 text-red-400 text-xs p-3 rounded-lg font-mono flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 shrink-0 text-red-400" />
+              <span>{error}</span>
             </div>
           )}
 

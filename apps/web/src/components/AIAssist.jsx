@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Lock, Zap, Play, Clock, AlertTriangle, Send } from 'lucide-react';
 import { api } from '../services/api';
 
 export default function AIAssist() {
@@ -119,8 +120,8 @@ export default function AIAssist() {
   if (!statusInfo.hasEntitlement || statusInfo.status === 'LOCKED') {
     return (
       <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-xl shadow-lg mt-6 text-center">
-        <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-zinc-800 text-zinc-500 mb-3 text-2xl">
-          🔒
+        <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-zinc-800 text-zinc-500 mb-3">
+          <Lock className="w-6 h-6 text-zinc-500" />
         </div>
         <h3 className="text-lg font-black text-zinc-300 uppercase tracking-wide">AI ASSIST — LOCKED</h3>
         <p className="text-xs text-zinc-400 mt-2 max-w-md mx-auto">
@@ -136,7 +137,7 @@ export default function AIAssist() {
       <div className="bg-zinc-900 border border-amber-500/50 p-6 rounded-xl shadow-lg mt-6">
         <div className="flex justify-between items-center pb-4 border-b border-zinc-800">
           <div className="flex items-center gap-2">
-            <span className="text-xl">⚡</span>
+            <Zap className="w-5 h-5 text-amber-400" />
             <div>
               <h3 className="text-lg font-black text-white">AI ASSIST — UNLOCKED</h3>
               <span className="text-xs text-amber-400 font-semibold">ENTITLEMENT READY</span>
@@ -151,13 +152,14 @@ export default function AIAssist() {
           <p className="text-sm text-zinc-300">
             Congratulations! Your team won the AI ASSIST auction item. Click below when you are ready to start your <strong className="text-amber-400">15-minute timer</strong>.
           </p>
-          {error && <div className="mt-3 text-xs text-red-400 bg-red-500/10 border border-red-500/30 p-2 rounded">{error}</div>}
+          {error && <div className="mt-3 text-xs text-red-400 bg-red-500/10 border border-red-500/30 p-2 rounded flex items-center gap-1.5"><AlertTriangle className="w-4 h-4 shrink-0" /><span>{error}</span></div>}
           <button
             onClick={handleStart}
             disabled={starting}
-            className="gold-button w-full mt-4 py-3 rounded-lg font-bold text-sm uppercase tracking-wider shadow-lg"
+            className="gold-button w-full mt-4 py-3 rounded-lg font-bold text-sm uppercase tracking-wider shadow-lg flex items-center justify-center gap-2"
           >
-            {starting ? 'STARTING TIMER…' : '🚀 START AI ASSIST (15:00)'}
+            <Play className="w-4 h-4" />
+            <span>{starting ? 'STARTING TIMER…' : 'START AI ASSIST (15:00)'}</span>
           </button>
         </div>
       </div>
@@ -172,7 +174,7 @@ export default function AIAssist() {
       {/* Header Bar */}
       <div className="flex justify-between items-center pb-4 border-b border-zinc-800">
         <div className="flex items-center gap-2">
-          <span className="text-xl">⚡</span>
+          <Zap className="w-5 h-5 text-amber-400" />
           <div>
             <h3 className="text-lg font-black text-white">AI ASSISTANT</h3>
             <span className="text-xs text-amber-400 font-semibold uppercase">
@@ -188,14 +190,15 @@ export default function AIAssist() {
           </div>
 
           {/* Live Countdown */}
-          <div className={`px-3 py-1.5 rounded font-mono text-xs font-bold border ${
+          <div className={`px-3 py-1.5 rounded font-mono text-xs font-bold border flex items-center gap-1.5 ${
             isExpired
               ? 'bg-red-500/10 border-red-500/30 text-red-400'
               : remainingSecs < 120
               ? 'bg-amber-500/20 border-amber-500/50 text-amber-300 animate-pulse'
               : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
           }`}>
-            ⏱️ {isExpired ? '00:00 EXPIRED' : formatTime(remainingSecs)}
+            <Clock className="w-4 h-4 shrink-0" />
+            <span>{isExpired ? '00:00 EXPIRED' : formatTime(remainingSecs)}</span>
           </div>
 
           {!isExpired && (
@@ -240,8 +243,9 @@ export default function AIAssist() {
       </div>
 
       {error && (
-        <div className="mt-3 bg-red-500/10 border border-red-500/30 text-red-400 text-xs p-3 rounded-lg font-mono">
-          🚨 {error}
+        <div className="mt-3 bg-red-500/10 border border-red-500/30 text-red-400 text-xs p-3 rounded-lg font-mono flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 shrink-0" />
+          <span>{error}</span>
         </div>
       )}
 

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Clock, AlertTriangle, CheckCircle, Send, Lock } from 'lucide-react';
 import { api } from '../services/api';
 
 export default function Submission({ team }) {
@@ -72,7 +73,7 @@ export default function Submission({ team }) {
       });
       setSubmission(res);
       setShowConfirmModal(false);
-      setSuccessMsg(isFinal ? '🎉 FINAL SUBMISSION RECORDED SUCCESSFULLY!' : 'Draft submission updated.');
+      setSuccessMsg(isFinal ? 'FINAL SUBMISSION RECORDED SUCCESSFULLY!' : 'Draft submission updated.');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -100,8 +101,9 @@ export default function Submission({ team }) {
 
           <div className="bg-zinc-950 p-3 rounded-lg border border-zinc-800 text-center">
             <span className="text-[10px] text-zinc-500 font-mono uppercase block">TIME REMAINING</span>
-            <div className="text-xl font-mono font-black text-amber-400">
-              ⏱️ {formatTime(secondsLeft)}
+            <div className="text-xl font-mono font-black text-amber-400 flex items-center gap-1.5 justify-center">
+              <Clock className="w-5 h-5 text-amber-400" />
+              <span>{formatTime(secondsLeft)}</span>
             </div>
           </div>
         </div>
@@ -138,14 +140,16 @@ export default function Submission({ team }) {
         </div>
 
         {error && (
-          <div className="bg-red-500/10 border border-red-500/30 text-red-400 text-xs p-3 rounded-lg font-mono">
-            🚨 {error}
+          <div className="bg-red-500/10 border border-red-500/30 text-red-400 text-xs p-3 rounded-lg font-mono flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 shrink-0 text-red-400" />
+            <span>{error}</span>
           </div>
         )}
 
         {successMsg && (
-          <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs p-3 rounded-lg font-mono">
-            {successMsg}
+          <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs p-3 rounded-lg font-mono flex items-center gap-2">
+            <CheckCircle className="w-4 h-4 shrink-0 text-emerald-400" />
+            <span>{successMsg}</span>
           </div>
         )}
 
@@ -218,15 +222,17 @@ export default function Submission({ team }) {
                 type="button"
                 onClick={() => setShowConfirmModal(true)}
                 disabled={submitting || secondsLeft <= 0 || !reference.trim()}
-                className="gold-button px-8 py-3 rounded-lg text-xs font-bold uppercase tracking-wider disabled:opacity-50"
+                className="gold-button px-8 py-3 rounded-lg text-xs font-bold uppercase tracking-wider disabled:opacity-50 flex items-center gap-2"
               >
-                🚀 SUBMIT FINAL
+                <Send className="w-4 h-4" />
+                <span>SUBMIT FINAL</span>
               </button>
             </div>
           ) : (
             <div className="bg-zinc-950 border border-emerald-500/30 p-4 rounded-lg text-center space-y-1">
-              <div className="text-emerald-400 font-bold text-xs uppercase">
-                ✅ FINAL SUBMISSION LOCKED & RECORDED
+              <div className="text-emerald-400 font-bold text-xs uppercase flex items-center justify-center gap-1.5">
+                <Lock className="w-4 h-4 text-emerald-400" />
+                <span>FINAL SUBMISSION LOCKED & RECORDED</span>
               </div>
               <p className="text-[11px] text-zinc-400">
                 Your submission is finalized and queued for judge evaluation. Editing is locked unless reopened by an event organizer.

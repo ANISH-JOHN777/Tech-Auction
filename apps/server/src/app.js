@@ -8,6 +8,7 @@ import auctionRoutes from './routes/auction.routes.js';
 import aiRoutes from './routes/ai.routes.js';
 import submissionRoutes from './routes/submission.routes.js';
 import eventRoutes from './routes/event.routes.js';
+import workspaceRoutes from './routes/workspace.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
 export function createApp() {
@@ -48,6 +49,7 @@ export function createApp() {
   app.use('/api/ai', aiRoutes);
   app.use('/api', submissionRoutes);
   app.use('/api', eventRoutes);
+  app.use('/api/workspace', workspaceRoutes);
 
   // Centralized Error Handling Middleware
   app.use(errorHandler);

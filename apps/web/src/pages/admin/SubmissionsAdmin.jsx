@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { RefreshCw, Unlock, Trophy, X } from 'lucide-react';
 import { api } from '../../services/api';
 
 export default function SubmissionsAdmin() {
@@ -85,7 +86,7 @@ export default function SubmissionsAdmin() {
         judgeNotes,
       });
       setSelectedSub(updated);
-      alert(targetStatus === 'FINAL' ? '🎉 Score finalized!' : 'Score draft saved.');
+      alert(targetStatus === 'FINAL' ? 'Score finalized!' : 'Score draft saved.');
       loadSubmissions();
     } catch (err) {
       alert('Evaluation failed: ' + err.message);
@@ -132,9 +133,10 @@ export default function SubmissionsAdmin() {
 
           <button
             onClick={loadSubmissions}
-            className="text-xs bg-zinc-800 hover:bg-zinc-700 text-amber-400 font-bold px-3 py-1.5 rounded border border-zinc-700"
+            className="text-xs bg-zinc-800 hover:bg-zinc-700 text-amber-400 font-bold px-3 py-1.5 rounded border border-zinc-700 flex items-center gap-1.5"
           >
-            🔄 REFRESH LIST
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span>REFRESH LIST</span>
           </button>
         </div>
 
@@ -456,9 +458,10 @@ export default function SubmissionsAdmin() {
                 <button
                   type="button"
                   onClick={() => setShowReopenForm(!showReopenForm)}
-                  className="text-xs bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 px-3 py-2 rounded font-bold transition"
+                  className="text-xs bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 px-3 py-2 rounded font-bold transition flex items-center gap-1.5"
                 >
-                  {showReopenForm ? 'CANCEL REOPEN' : '🔓 REOPEN SUBMISSION'}
+                  <Unlock className="w-3.5 h-3.5" />
+                  <span>{showReopenForm ? 'CANCEL REOPEN' : 'REOPEN SUBMISSION'}</span>
                 </button>
 
                 <div className="flex gap-3">
@@ -475,9 +478,10 @@ export default function SubmissionsAdmin() {
                     type="button"
                     onClick={() => handleEvaluate('FINAL')}
                     disabled={savingScore}
-                    className="gold-button px-6 py-2 rounded text-xs font-bold uppercase tracking-wider"
+                    className="gold-button px-6 py-2 rounded text-xs font-bold uppercase tracking-wider flex items-center gap-1.5"
                   >
-                    🏆 FINALIZE SCORE
+                    <Trophy className="w-3.5 h-3.5" />
+                    <span>FINALIZE SCORE</span>
                   </button>
                 </div>
               </div>

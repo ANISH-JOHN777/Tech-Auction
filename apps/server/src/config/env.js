@@ -16,6 +16,9 @@ export const config = {
   adminPassword: process.env.ADMIN_PASSWORD || 'admin123',
   aiDurationSeconds: Number(process.env.AI_ASSIST_DURATION_SECONDS) || 900,
   aiMaxRequests: Number(process.env.AI_MAX_REQUESTS) || 30,
+  supabaseProjectId: process.env.SUPABASE_PROJECT_ID || 'bfkbdximihocboifkomn',
+  supabaseUrl: process.env.SUPABASE_URL || 'https://bfkbdximihocboifkomn.supabase.co',
+  supabaseAnonKey: process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJma2JkeGltaWhvY2JvaWZrb21uIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAyMjIzMDYsImV4cCI6MjEwNTc5ODMwNn0.R4WoOs3g9s50CMsvRe3qEVao9oqanHPb0-KqB7Bwna8',
 };
 
 export function validateEnv() {

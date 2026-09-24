@@ -65,6 +65,12 @@ export const api = {
   getPublicLeaderboard: () => request('/api/leaderboard', { method: 'GET' }),
   getEventSettings: () => request('/api/event/settings', { method: 'GET' }),
 
+  // Student Workspace & Debug API
+  getWorkspaceFiles: () => request('/api/workspace/files', { method: 'GET' }),
+  saveWorkspaceFile: (filePath, content) => request('/api/workspace/files', { method: 'POST', body: JSON.stringify({ file_path: filePath, content }) }),
+  resetWorkspace: () => request('/api/workspace/reset', { method: 'POST' }),
+  runWorkspaceTests: () => request('/api/workspace/run', { method: 'POST' }),
+
   // Event General & Heartbeat API
   getEventSummary: () => request('/api/event/summary', { method: 'GET' }),
 

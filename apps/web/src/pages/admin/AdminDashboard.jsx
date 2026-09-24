@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Users, Tag, FileText, Settings, Shield, Zap, Scroll, Upload } from 'lucide-react';
 import Teams from './Teams';
 import RegistrationImport from './RegistrationImport';
 import AuctionControl from './AuctionControl';
@@ -27,6 +28,17 @@ export default function AdminDashboard({ admin, onLogout }) {
     const interval = setInterval(loadSummary, 10000);
     return () => clearInterval(interval);
   }, []);
+
+  const tabs = [
+    { id: 'teams', label: 'TEAMS MANAGEMENT', icon: Users },
+    { id: 'auction', label: 'AUCTION CONTROL', icon: Tag },
+    { id: 'submissions', label: 'SUBMISSIONS & EVALUATION', icon: FileText },
+    { id: 'event', label: 'EVENT CONTROLS', icon: Settings },
+    { id: 'antimalpractice', label: 'ANTI-MALPRACTICE', icon: Shield },
+    { id: 'ai', label: 'AI ASSIST MONITOR', icon: Zap },
+    { id: 'audit', label: 'AUDIT LOGS', icon: Scroll },
+    { id: 'import', label: 'CSV IMPORT', icon: Upload },
+  ];
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8 space-y-6">
@@ -88,28 +100,23 @@ export default function AdminDashboard({ admin, onLogout }) {
 
       {/* Navigation Tabs */}
       <div className="flex gap-2 border-b border-zinc-800 pb-2 overflow-x-auto">
-        {[
-          { id: 'teams', label: '👥 TEAMS MANAGEMENT' },
-          { id: 'auction', label: '🏷️ AUCTION CONTROL' },
-          { id: 'submissions', label: '📝 SUBMISSIONS & EVALUATION' },
-          { id: 'event', label: '⚙️ EVENT CONTROLS' },
-          { id: 'antimalpractice', label: '🛡️ ANTI-MALPRACTICE' },
-          { id: 'ai', label: '⚡ AI ASSIST MONITOR' },
-          { id: 'audit', label: '📜 AUDIT LOGS' },
-          { id: 'import', label: '📥 CSV IMPORT' },
-        ].map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`px-3.5 py-2 rounded-lg text-xs font-bold uppercase transition whitespace-nowrap ${
-              activeTab === tab.id
-                ? 'bg-amber-500 text-black shadow'
-                : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800'
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
+        {tabs.map((tab) => {
+          const Icon = tab.icon;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold uppercase transition whitespace-nowrap ${
+                activeTab === tab.id
+                  ? 'bg-amber-500 text-black shadow'
+                  : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800'
+              }`}
+            >
+              <Icon className="w-4 h-4" />
+              <span>{tab.label}</span>
+            </button>
+          );
+        })}
       </div>
 
       {/* Tab Panels */}

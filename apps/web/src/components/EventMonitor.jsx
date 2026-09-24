@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { X, Maximize } from 'lucide-react';
 
 const API_BASE = '/api';
 
@@ -202,7 +203,7 @@ export default function EventMonitor({ isLive = true }) {
             onClick={() => setWarnings((prev) => prev.filter((item) => item.id !== w.id))}
             style={{ background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer', fontWeight: 'bold' }}
           >
-            ✕
+            <X size={14} />
           </button>
         </div>
       ))}
@@ -222,9 +223,13 @@ export default function EventMonitor({ isLive = true }) {
             cursor: 'pointer',
             boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
             alignSelf: 'flex-end',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px',
           }}
         >
-          ⛶ Enter Fullscreen
+          <Maximize size={14} />
+          <span>Enter Fullscreen</span>
         </button>
       )}
     </div>

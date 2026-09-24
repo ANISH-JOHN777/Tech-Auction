@@ -1,4 +1,5 @@
 import React from 'react';
+import { Pause, Flag, Trophy } from 'lucide-react';
 
 export default function EventStateOverlay({ eventStatus, onNavigateLeaderboard }) {
   if (!eventStatus || eventStatus === 'LIVE' || eventStatus === 'READY' || eventStatus === 'SETUP') {
@@ -10,8 +11,8 @@ export default function EventStateOverlay({ eventStatus, onNavigateLeaderboard }
       <div className="bg-zinc-900 border border-amber-500/40 max-w-lg w-full p-8 rounded-2xl shadow-2xl text-center space-y-6 gold-glow-border">
         {eventStatus === 'PAUSED' ? (
           <>
-            <div className="w-16 h-16 bg-amber-500/20 text-amber-400 border border-amber-500/40 rounded-full flex items-center justify-center mx-auto text-3xl animate-pulse">
-              ⏸️
+            <div className="w-16 h-16 bg-amber-500/20 text-amber-400 border border-amber-500/40 rounded-full flex items-center justify-center mx-auto animate-pulse">
+              <Pause className="w-8 h-8 text-amber-400" />
             </div>
             <div className="space-y-2">
               <span className="text-xs font-bold text-amber-500 tracking-widest uppercase">
@@ -28,8 +29,8 @@ export default function EventStateOverlay({ eventStatus, onNavigateLeaderboard }
           </>
         ) : (
           <>
-            <div className="w-16 h-16 bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 rounded-full flex items-center justify-center mx-auto text-3xl">
-              🏁
+            <div className="w-16 h-16 bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 rounded-full flex items-center justify-center mx-auto">
+              <Flag className="w-8 h-8 text-emerald-400" />
             </div>
             <div className="space-y-2">
               <span className="text-xs font-bold text-emerald-500 tracking-widest uppercase">
@@ -43,9 +44,10 @@ export default function EventStateOverlay({ eventStatus, onNavigateLeaderboard }
             {onNavigateLeaderboard ? (
               <button
                 onClick={onNavigateLeaderboard}
-                className="gold-button w-full py-3.5 rounded-xl font-bold text-xs uppercase tracking-wider shadow-lg"
+                className="gold-button w-full py-3.5 rounded-xl font-bold text-xs uppercase tracking-wider shadow-lg flex items-center justify-center gap-2"
               >
-                🏆 VIEW OFFICIAL LEADERBOARD
+                <Trophy className="w-4 h-4" />
+                <span>VIEW OFFICIAL LEADERBOARD</span>
               </button>
             ) : (
               <div className="bg-zinc-950 p-4 rounded-xl border border-zinc-800 text-xs font-mono text-zinc-400">

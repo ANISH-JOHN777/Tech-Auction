@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Trophy, RefreshCw, Medal } from 'lucide-react';
 import { api } from '../services/api';
 
 export default function Leaderboard() {
@@ -38,9 +39,10 @@ export default function Leaderboard() {
 
           <button
             onClick={loadLeaderboard}
-            className="text-xs bg-zinc-800 hover:bg-zinc-700 text-amber-400 font-bold px-3 py-1.5 rounded border border-zinc-700"
+            className="text-xs bg-zinc-800 hover:bg-zinc-700 text-amber-400 font-bold px-3 py-1.5 rounded border border-zinc-700 flex items-center gap-1.5"
           >
-            🔄 REFRESH
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span>REFRESH</span>
           </button>
         </div>
 
@@ -52,7 +54,7 @@ export default function Leaderboard() {
 
         {!data.visible ? (
           <div className="bg-zinc-950 border border-zinc-800 p-12 rounded-xl text-center space-y-3">
-            <div className="text-4xl">🏆</div>
+            <Trophy className="w-12 h-12 text-zinc-600 mx-auto" />
             <h3 className="text-lg font-black text-zinc-300 uppercase">LEADERBOARD HIDDEN BY ORGANIZERS</h3>
             <p className="text-xs text-zinc-400 max-w-md mx-auto">
               The official event leaderboard is currently set to private mode. Final rankings will be revealed by the event organizers after all evaluations are completed.
@@ -92,7 +94,14 @@ export default function Leaderboard() {
                     }`}
                   >
                     <td className="p-3.5 text-center font-bold text-sm">
-                      {entry.rank === 1 ? '🥇 1' : entry.rank === 2 ? '🥈 2' : entry.rank === 3 ? '🥉 3' : entry.rank}
+                      <div className="flex items-center justify-center gap-1">
+                        {entry.rank <= 3 && (
+                          <Medal className={`w-4 h-4 ${
+                            entry.rank === 1 ? 'text-amber-400' : entry.rank === 2 ? 'text-zinc-400' : 'text-amber-700'
+                          }`} />
+                        )}
+                        <span>{entry.rank}</span>
+                      </div>
                     </td>
                     <td className="p-3.5">
                       <div className="font-bold text-white text-sm font-sans">{entry.teamName}</div>

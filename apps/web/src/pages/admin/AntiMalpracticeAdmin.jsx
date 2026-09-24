@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { X } from 'lucide-react';
 
 export default function AntiMalpracticeAdmin() {
   const [violations, setViolations] = useState([]);
@@ -373,8 +374,8 @@ export default function AntiMalpracticeAdmin() {
                 <h3 className="text-base font-bold text-white">TEAM ACTION: {selectedTeam.code}</h3>
                 <p className="text-xs text-zinc-400">{selectedTeam.name}</p>
               </div>
-              <button onClick={() => setSelectedTeam(null)} className="text-zinc-400 hover:text-white font-bold">
-                ✕
+              <button onClick={() => setSelectedTeam(null)} className="text-zinc-400 hover:text-white p-1">
+                <X className="w-5 h-5" />
               </button>
             </div>
 

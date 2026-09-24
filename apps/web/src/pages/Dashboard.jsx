@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Rocket, Tag, FileText, Trophy, Code } from 'lucide-react';
 import TeamCard from '../components/TeamCard';
 import Timer from '../components/Timer';
 import EventMonitor from '../components/EventMonitor';
@@ -8,6 +9,7 @@ import ChallengeSelection from './ChallengeSelection';
 import Auction from './Auction';
 import Submission from './Submission';
 import Leaderboard from './Leaderboard';
+import DebugWorkspace from './DebugWorkspace';
 import { api } from '../services/api';
 
 export default function Dashboard({ team, onSelectChallenge, error }) {
@@ -88,16 +90,13 @@ export default function Dashboard({ team, onSelectChallenge, error }) {
         {challengeTitle && (
           <div className="flex items-center gap-2">
             <span className="text-zinc-500 font-sans text-xs">CHALLENGE PACKAGE:</span>
-            <a
-              href={`#challenge-${team.challenge}`}
-              onClick={(e) => {
-                e.preventDefault();
-                alert(`Challenge Package: ${challengeTitle}\n\nPlease access the folder under: /challenges/${team.challenge}/${challengeTitle}`);
-              }}
-              className="bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold px-3 py-1.5 rounded transition shadow font-sans uppercase tracking-wider flex items-center gap-1.5"
+            <button
+              onClick={() => setActiveTab('workspace')}
+              className="bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold px-3 py-1.5 rounded transition shadow font-sans uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"
             >
-              🚀 OPEN {challengeTitle.toUpperCase()}
-            </a>
+              <Code className="w-3.5 h-3.5" />
+              <span>DEBUG {challengeTitle.toUpperCase()}</span>
+            </button>
           </div>
         )}
       </div>
@@ -123,40 +122,57 @@ export default function Dashboard({ team, onSelectChallenge, error }) {
           <div className="flex gap-4 border-b border-zinc-800 pb-2 overflow-x-auto">
             <button
               onClick={() => setActiveTab('auction')}
-              className={`px-4 py-2 rounded-lg text-xs font-bold uppercase transition whitespace-nowrap ${
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold uppercase transition whitespace-nowrap ${
                 activeTab === 'auction'
                   ? 'bg-amber-500 text-black shadow-lg'
                   : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800'
               }`}
             >
-              🏷️ AUCTION ROOM & AI ASSIST
+              <Tag className="w-4 h-4" />
+              <span>AUCTION ROOM & AI ASSIST</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('workspace')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold uppercase transition whitespace-nowrap ${
+                activeTab === 'workspace'
+                  ? 'bg-amber-500 text-black shadow-lg'
+                  : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800'
+              }`}
+            >
+              <Code className="w-4 h-4" />
+              <span>DEBUG WORKSPACE</span>
             </button>
 
             <button
               onClick={() => setActiveTab('submission')}
-              className={`px-4 py-2 rounded-lg text-xs font-bold uppercase transition whitespace-nowrap ${
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold uppercase transition whitespace-nowrap ${
                 activeTab === 'submission'
                   ? 'bg-amber-500 text-black shadow-lg'
                   : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800'
               }`}
             >
-              📝 CHALLENGE SUBMISSION
+              <FileText className="w-4 h-4" />
+              <span>CHALLENGE SUBMISSION</span>
             </button>
 
             <button
               onClick={() => setActiveTab('leaderboard')}
-              className={`px-4 py-2 rounded-lg text-xs font-bold uppercase transition whitespace-nowrap ${
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold uppercase transition whitespace-nowrap ${
                 activeTab === 'leaderboard'
                   ? 'bg-amber-500 text-black shadow-lg'
                   : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800'
               }`}
             >
-              🏆 LIVE LEADERBOARD
+              <Trophy className="w-4 h-4" />
+              <span>LIVE LEADERBOARD</span>
             </button>
           </div>
 
           {activeTab === 'auction' ? (
             <Auction challenge={team.challenge} team={team} />
+          ) : activeTab === 'workspace' ? (
+            <DebugWorkspace team={team} onNavigateSubmission={() => setActiveTab('submission')} />
           ) : activeTab === 'submission' ? (
             <Submission team={team} />
           ) : (

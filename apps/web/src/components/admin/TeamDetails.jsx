@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { X } from 'lucide-react';
 
 export default function TeamDetails({ team, onUpdate, onClose }) {
   const [wallet, setWallet] = useState(team.wallet || 10000);
@@ -40,9 +41,9 @@ export default function TeamDetails({ team, onUpdate, onClose }) {
           </div>
           <button
             onClick={onClose}
-            className="text-zinc-400 hover:text-white text-lg font-bold px-2 py-1"
+            className="text-zinc-400 hover:text-white p-1"
           >
-            ✕
+            <X className="w-5 h-5" />
           </button>
         </div>
 
