@@ -1,4 +1,8 @@
-import { getDb } from '../db/database.js';
+import { eventRepository } from '../db/repositories/event.repository.js';
+import { teamRepository } from '../db/repositories/team.repository.js';
+import { violationRepository } from '../db/repositories/violation.repository.js';
+import { auditRepository } from '../db/repositories/audit.repository.js';
+import { submissionRepository } from '../db/repositories/submission.repository.js';
 
 // Rate limit windows in seconds
 const RATE_LIMITS = {
@@ -16,61 +20,45 @@ export class EventService {
    * Process heartbeat from authenticated student session
    */
   static async processHeartbeat(teamId, sessionId, payload = {}) {
-    const db = getDb();
     const now = new Date().toISOString();
     const { visibilityState = 'visible', fullscreenEnabled = false, clientMetadata = {} } = payload;
 
     // 1. Check existing active sessions for this team
-    const activeSessions = await db.all(
-      `SELECT * FROM team_event_sessions WHERE team_id = ? AND status = 'ACTIVE'`,
-      [teamId]
-    );
-
-    let currentSession = activeSessions.find((s) => s.session_id === sessionId);
+    const activeSessions = await eventRepository.getActiveEventSessions();
+    const teamActiveSessions = activeSessions.filter((s) => s.team_id === teamId);
+    let currentSession = teamActiveSessions.find((s) => s.session_id === sessionId);
 
     // If second active session detected from different session_id, log MULTIPLE_SESSION violation
-    if (activeSessions.length > 0 && !currentSession) {
-      // Check rate limit for MULTIPLE_SESSION violation
-      const lastMult = await db.get(
-        `SELECT created_at FROM violations WHERE team_id = ? AND type = 'MULTIPLE_SESSION' ORDER BY id DESC LIMIT 1`,
-        [teamId]
-      );
-      if (!lastMult || (new Date(now) - new Date(lastMult.created_at)) / 1000 > 30) {
+    if (teamActiveSessions.length > 0 && !currentSession) {
+      const lastMult = await violationRepository.getLastSameType(teamId, 'MULTIPLE_SESSION');
+      if (!lastMult || (new Date(now) - new Date(lastMult.created_at || lastMult.server_timestamp)) / 1000 > 30) {
         await this.recordViolation({
           teamId,
           type: 'MULTIPLE_SESSION',
           severity: 'HIGH',
           description: `Multiple active sessions detected for team. Current session: ${sessionId}`,
-          metadata: JSON.stringify({ existing_sessions: activeSessions.map((s) => s.session_id), new_session: sessionId }),
+          metadata: JSON.stringify({ existing_sessions: teamActiveSessions.map((s) => s.session_id), new_session: sessionId }),
         });
       }
     }
 
-    if (!currentSession) {
-      const res = await db.run(
-        `INSERT INTO team_event_sessions (team_id, session_id, started_at, last_heartbeat, last_visibility_state, fullscreen_enabled, status, client_metadata)
-         VALUES (?, ?, ?, ?, ?, ?, 'ACTIVE', ?)`,
-        [teamId, sessionId, now, now, visibilityState, fullscreenEnabled ? 1 : 0, JSON.stringify(clientMetadata)]
-      );
-      currentSession = { id: res.lastID, team_id: teamId, session_id: sessionId };
-    } else {
-      await db.run(
-        `UPDATE team_event_sessions
-         SET last_heartbeat = ?, last_visibility_state = ?, fullscreen_enabled = ?, client_metadata = ?
-         WHERE id = ?`,
-        [now, visibilityState, fullscreenEnabled ? 1 : 0, JSON.stringify(clientMetadata), currentSession.id]
-      );
-    }
+    currentSession = await eventRepository.upsertSession({
+      teamId,
+      sessionId,
+      visibilityState,
+      fullscreenEnabled,
+      clientMetadata,
+    });
 
     // Get current event status
-    const statusSetting = await db.get("SELECT value FROM event_settings WHERE key = 'event_status'");
-    const deadlineSetting = await db.get("SELECT value FROM event_settings WHERE key = 'challenge_deadline'");
-    const team = await db.get('SELECT status FROM teams WHERE id = ?', [teamId]);
+    const eventStatus = await eventRepository.getSettingByKey('event_status') || 'SETUP';
+    const challengeDeadline = await eventRepository.getSettingByKey('challenge_deadline') || null;
+    const team = await teamRepository.findById(teamId);
 
     return {
       success: true,
-      event_status: statusSetting ? statusSetting.value : 'SETUP',
-      challenge_deadline: deadlineSetting ? deadlineSetting.value : null,
+      event_status: eventStatus,
+      challenge_deadline: challengeDeadline,
       team_status: team ? team.status : 'ACTIVE',
       session_id: sessionId,
       last_heartbeat: now,
@@ -81,7 +69,6 @@ export class EventService {
    * Record a violation with privacy sanitization and rate-limiting
    */
   static async recordViolation({ teamId, type, severity, description, metadata, clientTimestamp }) {
-    const db = getDb();
     const now = new Date().toISOString();
 
     // Default severity mapping if not provided
@@ -97,10 +84,7 @@ export class EventService {
 
     // Rate-limiting check
     const windowSeconds = RATE_LIMITS[type] || 5;
-    const lastSameType = await db.get(
-      `SELECT created_at, server_timestamp FROM violations WHERE team_id = ? AND type = ? ORDER BY id DESC LIMIT 1`,
-      [teamId, type]
-    );
+    const lastSameType = await violationRepository.getLastSameType(teamId, type);
 
     if (lastSameType) {
       const lastTimeStr = lastSameType.created_at || lastSameType.server_timestamp;
@@ -127,7 +111,6 @@ export class EventService {
       delete copy.clipboardData;
       cleanMetadata = JSON.stringify(copy);
     } else if (typeof metadata === 'string') {
-      // If raw string passed, ensure no content leaks
       try {
         const parsed = JSON.parse(metadata);
         delete parsed.clipboardText;
@@ -143,14 +126,17 @@ export class EventService {
       ? String(description).replace(/content:.*$/i, '').substring(0, 255)
       : `${type} event logged`;
 
-    const res = await db.run(
-      `INSERT INTO violations (team_id, type, severity, description, metadata, client_timestamp, server_timestamp, status, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'OPEN', ?)`,
-      [teamId, type, severity, cleanDescription, cleanMetadata || null, clientTimestamp || now, now, now]
-    );
+    const row = await violationRepository.recordViolation({
+      teamId,
+      type,
+      severity,
+      description: cleanDescription,
+      metadata: cleanMetadata,
+      clientTimestamp,
+    });
 
     return {
-      id: res.lastID,
+      id: row.id,
       team_id: teamId,
       type,
       severity,
@@ -164,62 +150,26 @@ export class EventService {
    * Admin view of violations with filtering
    */
   static async getViolations({ team_id, track, severity, type, status, limit = 100, offset = 0 } = {}) {
-    const db = getDb();
-    let query = `
-      SELECT v.*, t.code as team_code, t.name as team_name, t.challenge as track, t.status as team_status
-      FROM violations v
-      JOIN teams t ON v.team_id = t.id
-      WHERE 1=1
-    `;
-    const params = [];
-
-    if (team_id) {
-      query += ` AND v.team_id = ?`;
-      params.push(team_id);
-    }
-    if (track) {
-      query += ` AND t.challenge = ?`;
-      params.push(track);
-    }
-    if (severity) {
-      query += ` AND v.severity = ?`;
-      params.push(severity);
-    }
-    if (type) {
-      query += ` AND v.type = ?`;
-      params.push(type);
-    }
-    if (status) {
-      query += ` AND v.status = ?`;
-      params.push(status);
-    }
-
-    query += ` ORDER BY v.id DESC LIMIT ? OFFSET ?`;
-    params.push(Number(limit), Number(offset));
-
-    const rows = await db.all(query, params);
-    return rows;
+    return await violationRepository.getViolations({ team_id, track, severity, type, status, limit, offset });
   }
 
   /**
    * Admin action: update violation status (REVIEWED, DISMISSED, ACTION_TAKEN)
    */
   static async updateViolationStatus(adminUser, violationId, newStatus, reason = '') {
-    const db = getDb();
-    const now = new Date().toISOString();
-
-    const violation = await db.get('SELECT * FROM violations WHERE id = ?', [violationId]);
+    const violation = await violationRepository.findById(violationId);
     if (!violation) {
       throw new Error('Violation not found');
     }
 
-    await db.run('UPDATE violations SET status = ? WHERE id = ?', [newStatus, violationId]);
+    await violationRepository.updateStatus(violationId, newStatus);
 
     const actionType = newStatus === 'DISMISSED' ? 'VIOLATION_DISMISSED' : 'VIOLATION_REVIEWED';
-    await db.run(
-      `INSERT INTO event_admin_actions (admin_user, team_id, action, reason, created_at)
-       VALUES (?, ?, ?, ?, ?)`,
-      [adminUser || 'admin', violation.team_id, actionType, reason || `Violation #${violationId} set to ${newStatus}`, now]
+    await auditRepository.recordAdminAction(
+      adminUser || 'admin',
+      violation.team_id,
+      actionType,
+      reason || `Violation #${violationId} set to ${newStatus}`
     );
 
     return { success: true, violation_id: violationId, status: newStatus };
@@ -233,24 +183,17 @@ export class EventService {
       throw new Error('A valid reason is required for administrative team actions.');
     }
 
-    const db = getDb();
-    const now = new Date().toISOString();
-
-    const team = await db.get('SELECT * FROM teams WHERE id = ?', [teamId]);
+    const team = await teamRepository.findById(teamId);
     if (!team) {
       throw new Error('Team not found');
     }
 
-    await db.run('UPDATE teams SET status = ? WHERE id = ?', [newStatus, teamId]);
+    await teamRepository.updateTeam(teamId, { status: newStatus });
 
     let actionName = `TEAM_${newStatus}`;
     if (newStatus === 'ACTIVE') actionName = 'TEAM_REINSTATED';
 
-    await db.run(
-      `INSERT INTO event_admin_actions (admin_user, team_id, action, reason, created_at)
-       VALUES (?, ?, ?, ?, ?)`,
-      [adminUser || 'admin', teamId, actionName, reason.trim(), now]
-    );
+    await auditRepository.recordAdminAction(adminUser || 'admin', teamId, actionName, reason.trim());
 
     return { success: true, team_id: teamId, team_code: team.code, new_status: newStatus, reason };
   }
@@ -264,41 +207,25 @@ export class EventService {
       throw new Error(`Invalid event status: ${newEventStatus}`);
     }
 
-    const db = getDb();
     const now = new Date().toISOString();
 
-    await db.run(
-      `INSERT INTO event_settings (key, value, updated_at) VALUES ('event_status', ?, ?)
-       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
-      [newEventStatus, now]
-    );
+    await eventRepository.setSetting('event_status', newEventStatus);
 
     if (newEventStatus === 'LIVE') {
-      await db.run(
-        `INSERT INTO event_settings (key, value, updated_at) VALUES ('event_started_at', ?, ?)
-         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
-        [now, now]
-      );
-      await db.run(
-        `INSERT INTO event_settings (key, value, updated_at) VALUES ('challenge_started_at', ?, ?)
-         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
-        [now, now]
-      );
+      await eventRepository.setSetting('event_started_at', now);
+      await eventRepository.setSetting('challenge_started_at', now);
     }
 
     if (deadline) {
-      await db.run(
-        `INSERT INTO event_settings (key, value, updated_at) VALUES ('challenge_deadline', ?, ?)
-         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
-        [deadline, now]
-      );
+      await eventRepository.setSetting('challenge_deadline', deadline);
     }
 
     const actionName = `EVENT_${newEventStatus}`;
-    await db.run(
-      `INSERT INTO event_admin_actions (admin_user, team_id, action, reason, created_at)
-       VALUES (?, NULL, ?, ?, ?)`,
-      [adminUser || 'admin', actionName, reason || `Event status changed to ${newEventStatus}`, now]
+    await auditRepository.recordAdminAction(
+      adminUser || 'admin',
+      null,
+      actionName,
+      reason || `Event status changed to ${newEventStatus}`
     );
 
     return { success: true, event_status: newEventStatus, updated_at: now };
@@ -308,40 +235,25 @@ export class EventService {
    * Organizer Dashboard / Monitoring Summary
    */
   static async getEventSummary() {
-    const db = getDb();
+    const settings = await eventRepository.getSettings();
 
-    // Event settings
-    const settingsRows = await db.all('SELECT key, value FROM event_settings');
-    const settings = {};
-    settingsRows.forEach((r) => (settings[r.key] = r.value));
+    const totalTeamsCount = await teamRepository.count();
 
-    // Team stats
-    const totalTeams = await db.get('SELECT COUNT(*) as count FROM teams');
-    const eligibleTeams = await db.get('SELECT COUNT(*) as count FROM teams WHERE auction_eligible = 1');
-    const activeTeams = await db.get("SELECT COUNT(*) as count FROM teams WHERE status = 'ACTIVE'");
-    const suspendedTeams = await db.get("SELECT COUNT(*) as count FROM teams WHERE status = 'SUSPENDED'");
-    const disqualifiedTeams = await db.get("SELECT COUNT(*) as count FROM teams WHERE status = 'DISQUALIFIED'");
+    const allTeams = await teamRepository.findAll();
+    const eligibleTeams = allTeams.filter((t) => t.auction_eligible === 1).length;
+    const activeTeams = allTeams.filter((t) => t.status === 'ACTIVE').length;
+    const suspendedTeams = allTeams.filter((t) => t.status === 'SUSPENDED').length;
+    const disqualifiedTeams = allTeams.filter((t) => t.status === 'DISQUALIFIED').length;
 
-    const submittedTeams = await db.get('SELECT COUNT(DISTINCT team_id) as count FROM submissions');
-    const flaggedTeams = await db.get(`
-      SELECT COUNT(DISTINCT team_id) as count FROM violations WHERE status = 'OPEN' AND severity IN ('HIGH', 'CRITICAL')
-    `);
+    const submittedTeamsCount = await submissionRepository.countDistinctSubmittedTeams();
 
-    const openViolations = await db.get("SELECT COUNT(*) as count FROM violations WHERE status = 'OPEN'");
+    const openViolationsList = await violationRepository.getViolations({ status: 'OPEN', limit: 1000 });
+    const flaggedTeamIds = new Set(
+      openViolationsList.filter((v) => ['HIGH', 'CRITICAL'].includes(v.severity)).map((v) => v.team_id)
+    );
 
-    const latestEvents = await db.all(`
-      SELECT v.*, t.code as team_code, t.name as team_name
-      FROM violations v
-      JOIN teams t ON v.team_id = t.id
-      ORDER BY v.id DESC LIMIT 10
-    `);
-
-    const activeSessions = await db.all(`
-      SELECT s.*, t.code as team_code, t.name as team_name, t.status as team_status
-      FROM team_event_sessions s
-      JOIN teams t ON s.team_id = t.id
-      WHERE s.status = 'ACTIVE'
-    `);
+    const latestEvents = await violationRepository.getViolations({ limit: 10 });
+    const activeSessions = await eventRepository.getActiveEventSessions();
 
     return {
       event_status: settings.event_status || 'SETUP',
@@ -349,14 +261,14 @@ export class EventService {
       challenge_started_at: settings.challenge_started_at || null,
       challenge_deadline: settings.challenge_deadline || null,
       leaderboard_visible: settings.leaderboard_visible === 'true',
-      registered_teams: totalTeams.count,
-      eligible_teams: eligibleTeams.count,
-      active_teams: activeTeams.count,
-      suspended_teams: suspendedTeams.count,
-      disqualified_teams: disqualifiedTeams.count,
-      submitted_teams: submittedTeams.count,
-      flagged_teams: flaggedTeams.count,
-      open_violations: openViolations.count,
+      registered_teams: totalTeamsCount,
+      eligible_teams: eligibleTeams,
+      active_teams: activeTeams,
+      suspended_teams: suspendedTeams,
+      disqualified_teams: disqualifiedTeams,
+      submitted_teams: submittedTeamsCount,
+      flagged_teams: flaggedTeamIds.size,
+      open_violations: openViolationsList.length,
       latest_events: latestEvents,
       active_sessions: activeSessions,
     };

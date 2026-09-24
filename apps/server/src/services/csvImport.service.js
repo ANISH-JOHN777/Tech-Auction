@@ -1,4 +1,5 @@
-import { getDb } from '../db/database.js';
+import { query } from '../db/postgres.js';
+import { teamRepository } from '../db/repositories/team.repository.js';
 
 function parseCSVLine(line) {
   const result = [];
@@ -101,7 +102,6 @@ export async function parseAndImportCSV(csvText) {
     });
   }
 
-  const db = getDb();
   let importedTeamsCount = 0;
   let importedMembersCount = 0;
   let skippedDuplicateTeamsCount = 0;
@@ -110,13 +110,12 @@ export async function parseAndImportCSV(csvText) {
   let codeCounter = 101;
 
   for (const [key, teamData] of teamsMap.entries()) {
-    // Check if team exists by name or code
     let existing = null;
     if (teamData.teamCode) {
-      existing = await db.get('SELECT * FROM teams WHERE code = ?', [teamData.teamCode]);
+      existing = await teamRepository.findByCode(teamData.teamCode);
     }
     if (!existing) {
-      existing = await db.get('SELECT * FROM teams WHERE LOWER(name) = LOWER(?)', [teamData.teamName]);
+      existing = await teamRepository.findByName(teamData.teamName);
     }
 
     let teamId;
@@ -127,11 +126,10 @@ export async function parseAndImportCSV(csvText) {
       teamId = existing.id;
       teamCode = existing.code;
     } else {
-      // Generate team code if not provided
       if (!teamCode) {
         while (true) {
           const generated = `TA${codeCounter++}`;
-          const check = await db.get('SELECT id FROM teams WHERE code = ?', [generated]);
+          const check = await teamRepository.findByCode(generated);
           if (!check) {
             teamCode = generated;
             break;
@@ -139,36 +137,33 @@ export async function parseAndImportCSV(csvText) {
         }
       }
 
-      const now = new Date().toISOString();
       const validChallenge = ['full-stack', 'cybersecurity'].includes(teamData.challenge) ? teamData.challenge : null;
-
-      const result = await db.run(
-        `INSERT INTO teams (code, name, pin, college, department, challenge, wallet, auction_eligible, login_enabled, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, 10000, 1, 1, ?, ?)`,
-        [teamCode, teamData.teamName, teamData.pin || '1234', teamData.college, teamData.department, validChallenge, now, now]
-      );
-      teamId = result.lastID;
+      const createdTeam = await teamRepository.createTeam({
+        code: teamCode,
+        name: teamData.teamName,
+        pin: teamData.pin || '1234',
+        college: teamData.college,
+        department: teamData.department,
+        challenge: validChallenge,
+        wallet: 1000,
+        auction_eligible: 1,
+        login_enabled: 1,
+      });
+      teamId = createdTeam.id;
       importedTeamsCount++;
 
-      // Create registration audit entry
       const regCode = `REG_${teamCode}_${Date.now()}`;
-      await db.run(
-        `INSERT INTO registrations (registration_code, team_id, source, imported_at) VALUES (?, ?, 'csv_import', ?)`,
-        [regCode, teamId, now]
+      await query(
+        `INSERT INTO registrations (registration_code, team_id, source, imported_at) VALUES ($1, $2, 'csv_import', NOW())`,
+        [regCode, teamId]
       );
     }
 
-    // Add members if not existing
     for (const member of teamData.members) {
-      const existingMember = await db.get(
-        'SELECT id FROM team_members WHERE team_id = ? AND LOWER(name) = LOWER(?)',
-        [teamId, member.name]
-      );
+      const existingMembers = await teamRepository.getMembers(teamId);
+      const existingMember = existingMembers.find((m) => m.name.toLowerCase() === member.name.toLowerCase());
       if (!existingMember) {
-        await db.run(
-          `INSERT INTO team_members (team_id, name, email, phone, role) VALUES (?, ?, ?, ?, ?)`,
-          [teamId, member.name, member.email, member.phone, 'Member']
-        );
+        await teamRepository.addMember(teamId, member);
         importedMembersCount++;
       }
     }

@@ -1,17 +1,10 @@
 import { config } from '../config/env.js';
-import { getDb } from '../db/database.js';
+import { aiRepository } from '../db/repositories/ai.repository.js';
 
 export async function getAIEntitlementStatus(teamId, track) {
-  const db = getDb();
-  let entitlement = await db.get(
-    `SELECT * FROM ai_entitlements WHERE team_id = ? AND track = ? AND status IN ('AVAILABLE', 'ACTIVE') ORDER BY id DESC LIMIT 1`,
-    [teamId, track]
-  );
+  let entitlement = await aiRepository.findActiveOrAvailableEntitlement(teamId, track);
   if (!entitlement) {
-    const past = await db.get(
-      `SELECT * FROM ai_entitlements WHERE team_id = ? AND track = ? ORDER BY id DESC LIMIT 1`,
-      [teamId, track]
-    );
+    const past = await aiRepository.findLatestEntitlement(teamId, track);
     if (!past) {
       return { hasEntitlement: false, status: 'LOCKED', remainingSeconds: 0, requestCount: 0, maxRequests: config.aiMaxRequests };
     }
@@ -25,7 +18,7 @@ export async function getAIEntitlementStatus(teamId, track) {
     const expiresAt = new Date(entitlement.expires_at);
     if (now >= expiresAt) {
       // Auto-expire on server
-      await db.run("UPDATE ai_entitlements SET status = 'EXPIRED', updated_at = ? WHERE id = ?", [now.toISOString(), entitlement.id]);
+      await aiRepository.updateEntitlementStatus(entitlement.id, 'EXPIRED');
       entitlement.status = 'EXPIRED';
     } else {
       remainingSeconds = Math.max(0, Math.floor((expiresAt.getTime() - now.getTime()) / 1000));
@@ -33,7 +26,6 @@ export async function getAIEntitlementStatus(teamId, track) {
   } else if (entitlement.status === 'AVAILABLE') {
     remainingSeconds = entitlement.duration_seconds || config.aiDurationSeconds;
   }
-
 
   return {
     hasEntitlement: true,
@@ -48,17 +40,10 @@ export async function getAIEntitlementStatus(teamId, track) {
 }
 
 export async function startAIEntitlement(teamId, track) {
-  const db = getDb();
-  const entitlement = await db.get(
-    `SELECT * FROM ai_entitlements WHERE team_id = ? AND track = ? AND status = 'AVAILABLE' ORDER BY id DESC LIMIT 1`,
-    [teamId, track]
-  );
+  const entitlement = await aiRepository.findAvailableEntitlement(teamId, track);
 
   if (!entitlement) {
-    const active = await db.get(
-      `SELECT * FROM ai_entitlements WHERE team_id = ? AND track = ? AND status = 'ACTIVE' ORDER BY id DESC LIMIT 1`,
-      [teamId, track]
-    );
+    const active = await aiRepository.findActiveEntitlement(teamId, track);
     if (active) {
       return await getAIEntitlementStatus(teamId, track);
     }
@@ -74,25 +59,19 @@ export async function startAIEntitlement(teamId, track) {
   const duration = (durSecs && durSecs > 0) ? durSecs : (config.aiDurationSeconds || 900);
   const expiresAt = new Date(now.getTime() + duration * 1000).toISOString();
 
-
-  await db.run(
-    `UPDATE ai_entitlements SET status = 'ACTIVE', started_at = ?, expires_at = ?, updated_at = ? WHERE id = ?`,
-    [now.toISOString(), expiresAt, now.toISOString(), entitlement.id]
-  );
+  await aiRepository.updateEntitlementStatus(entitlement.id, 'ACTIVE', {
+    started_at: now.toISOString(),
+    expires_at: expiresAt,
+  });
 
   return await getAIEntitlementStatus(teamId, track);
 }
 
 export async function stopAIEntitlement(teamId, track) {
-  const db = getDb();
-  const entitlement = await db.get(
-    `SELECT * FROM ai_entitlements WHERE team_id = ? AND track = ? AND status = 'ACTIVE' ORDER BY id DESC LIMIT 1`,
-    [teamId, track]
-  );
+  const entitlement = await aiRepository.findActiveEntitlement(teamId, track);
 
   if (entitlement) {
-    const now = new Date().toISOString();
-    await db.run(`UPDATE ai_entitlements SET status = 'EXPIRED', updated_at = ? WHERE id = ?`, [now, entitlement.id]);
+    await aiRepository.updateEntitlementStatus(entitlement.id, 'EXPIRED');
   }
 
   return await getAIEntitlementStatus(teamId, track);
@@ -159,12 +138,12 @@ export async function processAIChat({ team, message, forceMock = false }) {
     throw err;
   }
 
-  const db = getDb();
   const nextCount = status.requestCount + 1;
-  const now = new Date().toISOString();
 
   // Increment request count on server
-  await db.run(`UPDATE ai_entitlements SET request_count = ?, updated_at = ? WHERE id = ?`, [nextCount, now, status.entitlementId]);
+  await aiRepository.updateEntitlementStatus(status.entitlementId, status.status, {
+    request_count: nextCount,
+  });
 
   let aiReplyText = '';
   let isSuccess = 1;
@@ -212,23 +191,33 @@ export async function processAIChat({ team, message, forceMock = false }) {
     const providerErr = new Error('AI service is temporarily unavailable. Please try again.');
     providerErr.statusCode = 502;
     providerErr.code = 'AI_PROVIDER_ERROR';
-    
+
     // Log failed attempt metadata
-    await db.run(
-      `INSERT INTO ai_usage_logs (team_id, entitlement_id, request_number, user_message_length, response_length, model, success, error_code, created_at)
-       VALUES (?, ?, ?, ?, 0, ?, 0, ?, ?)`,
-      [team.id, status.entitlementId, nextCount, trimmedMessage.length, config.geminiModel, errorCode, now]
-    );
+    await aiRepository.logUsage({
+      teamId: team.id,
+      entitlementId: status.entitlementId,
+      requestNumber: nextCount,
+      userMessageLength: trimmedMessage.length,
+      responseLength: 0,
+      model: config.geminiModel,
+      success: false,
+      errorCode,
+    });
 
     throw providerErr;
   }
 
   // Log successful usage metadata (Without storing sensitive full prompt/key)
-  await db.run(
-    `INSERT INTO ai_usage_logs (team_id, entitlement_id, request_number, user_message_length, response_length, model, success, error_code, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, 1, NULL, ?)`,
-    [team.id, status.entitlementId, nextCount, trimmedMessage.length, aiReplyText.length, config.geminiModel, now]
-  );
+  await aiRepository.logUsage({
+    teamId: team.id,
+    entitlementId: status.entitlementId,
+    requestNumber: nextCount,
+    userMessageLength: trimmedMessage.length,
+    responseLength: aiReplyText.length,
+    model: config.geminiModel,
+    success: true,
+    errorCode: null,
+  });
 
   const updatedStatus = await getAIEntitlementStatus(team.id, track);
 
@@ -241,24 +230,10 @@ export async function processAIChat({ team, message, forceMock = false }) {
 }
 
 export async function getAdminAISessions() {
-  const db = getDb();
-  const sessions = await db.all(`
-    SELECT e.*, t.name as team_name, t.code as team_code, t.challenge as team_track,
-           (SELECT COUNT(*) FROM ai_usage_logs WHERE entitlement_id = e.id) as log_count
-    FROM ai_entitlements e
-    JOIN teams t ON e.team_id = t.id
-    ORDER BY e.created_at DESC
-  `);
-  return sessions;
+  return await aiRepository.getAdminSessions();
 }
 
 export async function revokeAISession(entitlementId) {
-  const db = getDb();
-  const now = new Date().toISOString();
-  await db.run(
-    `UPDATE ai_entitlements SET status = 'REVOKED', updated_at = ? WHERE id = ?`,
-    [now, entitlementId]
-  );
+  await aiRepository.updateEntitlementStatus(entitlementId, 'REVOKED');
   return { success: true, message: 'AI entitlement revoked successfully.' };
 }
-

@@ -1,14 +1,12 @@
-import { getDb } from '../db/database.js';
+import { auctionRepository } from '../db/repositories/auction.repository.js';
 import { finalizeExpiredItem, getAuctionRoomState } from './auctionEngine.service.js';
 import { broadcastAuctionEvent } from '../socket/auction.socket.js';
 
 let activeTimers = new Map();
 
 export async function initializeTimerScheduler() {
-  const db = getDb();
-  
   // Check for any items marked ACTIVE with expired timers on boot
-  const activeItems = await db.all("SELECT * FROM auction_items WHERE status = 'ACTIVE'");
+  const activeItems = await auctionRepository.getActiveItems();
   const now = new Date();
 
   for (const item of activeItems) {
@@ -49,28 +47,25 @@ export function scheduleItemExpiry(itemId, track, durationMs) {
 }
 
 export async function startItemAuction(track, itemId, durationSeconds) {
-  const db = getDb();
-  const room = await db.get('SELECT * FROM auction_rooms WHERE track = ?', [track]);
+  const room = await auctionRepository.getRoomByTrack(track);
   if (!room) throw new Error('Auction room not found');
 
-  const item = await db.get('SELECT * FROM auction_items WHERE id = ? AND track = ?', [itemId, track]);
-  if (!item) throw new Error('Auction item not found or track mismatch');
+  const item = await auctionRepository.getItemById(itemId);
+  if (!item || item.track !== track) throw new Error('Auction item not found or track mismatch');
 
   const duration = durationSeconds || item.duration_seconds || 60;
   const now = new Date();
   const endsAt = new Date(now.getTime() + duration * 1000).toISOString();
 
   // Set item status to ACTIVE and set timer bounds
-  await db.run(
-    "UPDATE auction_items SET status = 'ACTIVE', timer_started_at = ?, timer_ends_at = ? WHERE id = ?",
-    [now.toISOString(), endsAt, item.id]
-  );
+  await auctionRepository.updateItem(item.id, {
+    status: 'ACTIVE',
+    timer_started_at: now.toISOString(),
+    timer_ends_at: endsAt,
+  });
 
   // Set room status to ACTIVE and set current_item_id
-  await db.run(
-    "UPDATE auction_rooms SET status = 'ACTIVE', current_item_id = ?, started_at = ? WHERE id = ?",
-    [item.id, now.toISOString(), room.id]
-  );
+  await auctionRepository.updateRoomStatus(track, 'ACTIVE', item.id);
 
   scheduleItemExpiry(item.id, track, duration * 1000);
 
@@ -81,12 +76,11 @@ export async function startItemAuction(track, itemId, durationSeconds) {
 }
 
 export async function pauseItemAuction(track) {
-  const db = getDb();
-  const room = await db.get('SELECT * FROM auction_rooms WHERE track = ?', [track]);
+  const room = await auctionRepository.getRoomByTrack(track);
   if (!room || !room.current_item_id) throw new Error('No active auction to pause');
 
-  await db.run("UPDATE auction_rooms SET status = 'PAUSED' WHERE id = ?", [room.id]);
-  await db.run("UPDATE auction_items SET status = 'PENDING' WHERE id = ?", [room.current_item_id]);
+  await auctionRepository.updateRoomStatus(track, 'PAUSED', room.current_item_id);
+  await auctionRepository.updateItem(room.current_item_id, { status: 'PENDING' });
 
   if (activeTimers.has(room.current_item_id)) {
     clearTimeout(activeTimers.get(room.current_item_id));

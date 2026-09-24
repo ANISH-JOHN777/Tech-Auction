@@ -1,4 +1,4 @@
-const API_BASE_URL = 'http://localhost:4000';
+import { API_BASE_URL } from '../config/api.js';
 
 function getStudentHeaders() {
   const headers = { 'Content-Type': 'application/json' };
@@ -59,15 +59,18 @@ export const api = {
   stopAIAssist: () => request('/api/ai/stop', { method: 'POST' }),
   chatAI: (message) => request('/api/ai/chat', { method: 'POST', body: JSON.stringify({ message }) }),
 
-  // Admin AI Monitoring API
-  getAdminAISessions: () => request('/api/ai/admin/sessions', { method: 'GET' }, true),
-  revokeAdminAISession: (id) => request(`/api/ai/admin/revoke/${id}`, { method: 'POST' }, true),
-
   // Student Submission & Leaderboard API
   getSubmission: () => request('/api/submission', { method: 'GET' }),
   submitChallenge: (data) => request('/api/submission', { method: 'POST', body: JSON.stringify(data) }),
   getPublicLeaderboard: () => request('/api/leaderboard', { method: 'GET' }),
   getEventSettings: () => request('/api/event/settings', { method: 'GET' }),
+
+  // Event General & Heartbeat API
+  getEventSummary: () => request('/api/event/summary', { method: 'GET' }),
+
+  // Admin AI Monitoring API
+  getAdminAISessions: () => request('/api/ai/admin/sessions', { method: 'GET' }, true),
+  revokeAdminAISession: (id) => request(`/api/ai/admin/revoke/${id}`, { method: 'POST' }, true),
 
   // Admin Submissions, Evaluation & Event Control API
   getAdminSubmissions: (search = '', track = '', status = '') =>
@@ -77,14 +80,16 @@ export const api = {
   reopenAdminSubmission: (id, notes = '') => request(`/api/admin/submissions/${id}/reopen`, { method: 'POST', body: JSON.stringify({ notes }) }, true),
   getAdminLeaderboard: () => request('/api/admin/leaderboard', { method: 'GET' }, true),
   updateAdminEventSetting: (key, value) => request('/api/admin/event/settings', { method: 'POST', body: JSON.stringify({ key, value }) }, true),
+  updateAdminEventState: (status, deadline, reason) => request('/api/admin/event/state', { method: 'POST', body: JSON.stringify({ status, deadline, reason }) }, true),
+  getAdminAuditLogs: () => request('/api/admin/event/audit', { method: 'GET' }, true),
 
-
-  // Admin API
+  // Admin Teams & Registration API
   adminLogin: (username, password) => request('/api/admin/login', { method: 'POST', body: JSON.stringify({ username, password }) }, true),
   getAdminMe: () => request('/api/admin/me', { method: 'GET' }, true),
   getAdminTeams: (search = '', challenge = '') => request(`/api/admin/teams?search=${encodeURIComponent(search)}&challenge=${encodeURIComponent(challenge)}`, { method: 'GET' }, true),
   getAdminTeamById: (id) => request(`/api/admin/teams/${id}`, { method: 'GET' }, true),
   updateAdminTeam: (id, updates) => request(`/api/admin/teams/${id}`, { method: 'PATCH', body: JSON.stringify(updates) }, true),
+  updateAdminTeamStatus: (teamId, status, reason) => request(`/api/admin/teams/${teamId}/status`, { method: 'PATCH', body: JSON.stringify({ status, reason }) }, true),
   importRegistrations: (csvText) => request('/api/admin/import/registrations', { method: 'POST', body: JSON.stringify({ csvText }) }, true),
   resetDemoData: () => request('/api/admin/reset-demo', { method: 'POST' }, true),
 

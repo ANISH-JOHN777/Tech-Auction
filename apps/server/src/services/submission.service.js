@@ -1,38 +1,26 @@
-import { getDb } from '../db/database.js';
+import { getClient } from '../db/postgres.js';
+import { eventRepository } from '../db/repositories/event.repository.js';
+import { submissionRepository } from '../db/repositories/submission.repository.js';
+import { scoreRepository } from '../db/repositories/score.repository.js';
+import { auditRepository } from '../db/repositories/audit.repository.js';
 
 export async function getEventSettings() {
-  const db = getDb();
-  const rows = await db.all('SELECT * FROM event_settings');
-  const settings = {};
-  for (const r of rows) {
-    settings[r.key] = r.value;
-  }
-  return settings;
+  return await eventRepository.getSettings();
 }
 
 export async function updateEventSetting(key, value) {
-  const db = getDb();
-  const now = new Date().toISOString();
-  await db.run(
-    `INSERT INTO event_settings (key, value, updated_at) VALUES (?, ?, ?)
-     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
-    [key, String(value), now]
-  );
+  await eventRepository.setSetting(key, value);
   return await getEventSettings();
 }
 
 export async function getSubmissionForTeam(teamId, track) {
-  const db = getDb();
-  const submission = await db.get(
-    `SELECT * FROM submissions WHERE team_id = ? AND track = ? ORDER BY id DESC LIMIT 1`,
-    [teamId, track]
-  );
+  const submission = await submissionRepository.findLatestByTeamAndTrack(teamId, track);
 
   if (!submission) {
     return null;
   }
 
-  const score = await db.get(`SELECT * FROM scores WHERE submission_id = ?`, [submission.id]);
+  const score = await scoreRepository.findBySubmissionId(submission.id);
   return {
     ...submission,
     score: score || null,
@@ -40,8 +28,6 @@ export async function getSubmissionForTeam(teamId, track) {
 }
 
 export async function createOrUpdateSubmission({ team, submissionType = 'FILE', submissionReference, isFinal = false }) {
-  const db = getDb();
-
   if (!team || !team.id) {
     const err = new Error('Authenticated team session required.');
     err.statusCode = 401;
@@ -70,19 +56,22 @@ export async function createOrUpdateSubmission({ team, submissionType = 'FILE', 
     }
   }
 
-  // Atomic SQLite transaction to prevent submission race conditions
-  await db.exec('BEGIN IMMEDIATE');
+  // Atomic PostgreSQL transaction with row locking
+  const client = await getClient();
   let submissionId;
   let version = 1;
   const now = new Date().toISOString();
   const status = isFinal ? 'FINAL' : 'SUBMITTED';
 
   try {
-    // Check existing submission inside transaction
-    const existing = await db.get(
-      `SELECT * FROM submissions WHERE team_id = ? AND track = ? ORDER BY id DESC LIMIT 1`,
+    await client.query('BEGIN');
+
+    // Lock existing submission for update inside transaction
+    const existingRes = await client.query(
+      `SELECT * FROM submissions WHERE team_id = $1 AND track = $2 ORDER BY id DESC LIMIT 1 FOR UPDATE`,
       [team.id, track]
     );
+    const existing = existingRes.rows[0];
 
     if (existing && existing.status === 'FINAL') {
       const err = new Error('Final submission has already been recorded and cannot be changed unless reopened by an organizer.');
@@ -93,81 +82,49 @@ export async function createOrUpdateSubmission({ team, submissionType = 'FILE', 
 
     if (existing) {
       version = (existing.submission_version || 1) + 1;
-      await db.run(
-        `UPDATE submissions SET submission_type = ?, submission_reference = ?, submitted_at = ?, status = ?, submission_version = ?, updated_at = ? WHERE id = ?`,
-        [submissionType, submissionReference || 'Submission package recorded', now, status, version, now, existing.id]
+      const updateRes = await client.query(
+        `UPDATE submissions SET submission_type = $1, submission_reference = $2, submitted_at = $3, status = $4, submission_version = $5, updated_at = $3 WHERE id = $6 RETURNING id`,
+        [submissionType, submissionReference || 'Submission package recorded', now, status, version, existing.id]
       );
-      submissionId = existing.id;
+      submissionId = updateRes.rows[0].id;
     } else {
-      const result = await db.run(
+      const insertRes = await client.query(
         `INSERT INTO submissions (team_id, track, submission_version, submission_type, submission_reference, submitted_at, status, created_at, updated_at)
-         VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?)`,
-        [team.id, track, submissionType, submissionReference || 'Submission package recorded', now, status, now, now]
+         VALUES ($1, $2, 1, $3, $4, $5, $6, $5, $5)
+         RETURNING id`,
+        [team.id, track, submissionType, submissionReference || 'Submission package recorded', now, status]
       );
-      submissionId = result.lastID;
+      submissionId = insertRes.rows[0].id;
     }
 
-    // Log evaluation audit event
-    await db.run(
-      `INSERT INTO evaluation_events (submission_id, action, actor, notes, created_at) VALUES (?, ?, ?, ?, ?)`,
+    // Log evaluation audit event inside transaction
+    await client.query(
+      `INSERT INTO evaluation_events (submission_id, action, actor, notes, created_at) VALUES ($1, $2, $3, $4, NOW())`,
       [
         submissionId,
         isFinal ? 'SUBMISSION_FINALIZED' : 'SUBMISSION_UPDATED',
         `TEAM:${team.code}`,
         `Submission v${version} recorded by team ${team.name}`,
-        now,
       ]
     );
 
-    await db.exec('COMMIT');
+    await client.query('COMMIT');
   } catch (err) {
-    try { await db.exec('ROLLBACK'); } catch (e) {}
+    await client.query('ROLLBACK');
     throw err;
+  } finally {
+    client.release();
   }
 
   return await getSubmissionForTeam(team.id, track);
 }
 
 export async function getAdminSubmissions({ track = '', status = '', search = '' }) {
-  const db = getDb();
-  let query = `
-    SELECT s.*, t.name as team_name, t.code as team_code, t.college as team_college,
-           sc.total_score, sc.evaluated_by, sc.evaluated_at
-    FROM submissions s
-    JOIN teams t ON s.team_id = t.id
-    LEFT JOIN scores sc ON s.id = sc.submission_id
-    WHERE 1=1
-  `;
-  const params = [];
-
-  if (track) {
-    query += ` AND s.track = ?`;
-    params.push(track);
-  }
-
-  if (status) {
-    query += ` AND s.status = ?`;
-    params.push(status);
-  }
-
-  if (search) {
-    query += ` AND (LOWER(t.name) LIKE ? OR LOWER(t.code) LIKE ?)`;
-    params.push(`%${search.toLowerCase()}%`, `%${search.toLowerCase()}%`);
-  }
-
-  query += ` ORDER BY s.submitted_at DESC`;
-  return await db.all(query, params);
+  return await submissionRepository.findAdminSubmissions({ track, status, search });
 }
 
 export async function getAdminSubmissionById(submissionId) {
-  const db = getDb();
-  const submission = await db.get(
-    `SELECT s.*, t.name as team_name, t.code as team_code, t.college as team_college, t.department as team_department
-     FROM submissions s
-     JOIN teams t ON s.team_id = t.id
-     WHERE s.id = ?`,
-    [submissionId]
-  );
+  const submission = await submissionRepository.findById(submissionId);
 
   if (!submission) {
     const err = new Error('Submission not found.');
@@ -176,11 +133,8 @@ export async function getAdminSubmissionById(submissionId) {
     throw err;
   }
 
-  const score = await db.get(`SELECT * FROM scores WHERE submission_id = ?`, [submissionId]);
-  const events = await db.all(
-    `SELECT * FROM evaluation_events WHERE submission_id = ? ORDER BY id DESC`,
-    [submissionId]
-  );
+  const score = await scoreRepository.findBySubmissionId(submissionId);
+  const events = await auditRepository.getEvaluationEventsForSubmission(submissionId);
 
   return {
     ...submission,
@@ -201,8 +155,7 @@ export async function evaluateSubmission({
   presentationPoints = 0,
   judgeNotes = '',
 }) {
-  const db = getDb();
-  const sub = await db.get(`SELECT * FROM submissions WHERE id = ?`, [submissionId]);
+  const sub = await submissionRepository.findById(submissionId);
 
   if (!sub) {
     const err = new Error('Submission not found.');
@@ -248,37 +201,47 @@ export async function evaluateSubmission({
   const now = new Date().toISOString();
 
   // Upsert Score
-  const existingScore = await db.get(`SELECT id FROM scores WHERE submission_id = ?`, [submissionId]);
-  if (existingScore) {
-    await db.run(
-      `UPDATE scores SET bug_points = ?, functional_points = ?, technical_points = ?, fix_points = ?, report_points = ?, presentation_points = ?, total_score = ?, judge_notes = ?, evaluated_by = ?, evaluated_at = ? WHERE submission_id = ?`,
-      [pBug, pFunc, pTech, pFix, pRep, pPres, totalScore, judgeNotes, adminUser, now, submissionId]
+  const client = await getClient();
+  try {
+    await client.query('BEGIN');
+    const existingScoreRes = await client.query('SELECT id FROM scores WHERE submission_id = $1', [submissionId]);
+    if (existingScoreRes.rows.length > 0) {
+      await client.query(
+        `UPDATE scores SET bug_points = $1, functional_points = $2, technical_points = $3, fix_points = $4, report_points = $5, presentation_points = $6, total_score = $7, judge_notes = $8, evaluated_by = $9, evaluated_at = $10 WHERE submission_id = $11`,
+        [pBug, pFunc, pTech, pFix, pRep, pPres, totalScore, judgeNotes, adminUser, now, submissionId]
+      );
+    } else {
+      await client.query(
+        `INSERT INTO scores (submission_id, team_id, track, bug_points, functional_points, technical_points, fix_points, report_points, presentation_points, total_score, judge_notes, evaluated_by, evaluated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+        [submissionId, sub.team_id, track, pBug, pFunc, pTech, pFix, pRep, pPres, totalScore, judgeNotes, adminUser, now]
+      );
+    }
+
+    // Update Submission Status
+    const nextStatus = ['UNDER_REVIEW', 'EVALUATED', 'FINAL'].includes(status) ? status : 'EVALUATED';
+    await client.query(`UPDATE submissions SET status = $1, updated_at = $2 WHERE id = $3`, [nextStatus, now, submissionId]);
+
+    // Record Audit Event
+    const actionLabel = nextStatus === 'FINAL' ? 'SCORE_FINALIZED' : 'SCORE_DRAFT_SAVED';
+    await client.query(
+      `INSERT INTO evaluation_events (submission_id, action, actor, notes, created_at) VALUES ($1, $2, $3, $4, NOW())`,
+      [submissionId, actionLabel, adminUser, `Total score: ${totalScore}/100. Status: ${nextStatus}. Notes: ${judgeNotes.substring(0, 100)}`]
     );
-  } else {
-    await db.run(
-      `INSERT INTO scores (submission_id, team_id, track, bug_points, functional_points, technical_points, fix_points, report_points, presentation_points, total_score, judge_notes, evaluated_by, evaluated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [submissionId, sub.team_id, track, pBug, pFunc, pTech, pFix, pRep, pPres, totalScore, judgeNotes, adminUser, now]
-    );
+
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
   }
-
-  // Update Submission Status
-  const nextStatus = ['UNDER_REVIEW', 'EVALUATED', 'FINAL'].includes(status) ? status : 'EVALUATED';
-  await db.run(`UPDATE submissions SET status = ?, updated_at = ? WHERE id = ?`, [nextStatus, now, submissionId]);
-
-  // Record Audit Event
-  const actionLabel = nextStatus === 'FINAL' ? 'SCORE_FINALIZED' : 'SCORE_DRAFT_SAVED';
-  await db.run(
-    `INSERT INTO evaluation_events (submission_id, action, actor, notes, created_at) VALUES (?, ?, ?, ?, ?)`,
-    [submissionId, actionLabel, adminUser, `Total score: ${totalScore}/100. Status: ${nextStatus}. Notes: ${judgeNotes.substring(0, 100)}`, now]
-  );
 
   return await getAdminSubmissionById(submissionId);
 }
 
 export async function reopenSubmission({ adminUser = 'admin', submissionId, notes = '' }) {
-  const db = getDb();
-  const sub = await db.get(`SELECT * FROM submissions WHERE id = ?`, [submissionId]);
+  const sub = await submissionRepository.findById(submissionId);
 
   if (!sub) {
     const err = new Error('Submission not found.');
@@ -288,18 +251,26 @@ export async function reopenSubmission({ adminUser = 'admin', submissionId, note
   }
 
   const now = new Date().toISOString();
-  await db.run(`UPDATE submissions SET status = 'SUBMITTED', updated_at = ? WHERE id = ?`, [now, submissionId]);
-
-  await db.run(
-    `INSERT INTO evaluation_events (submission_id, action, actor, notes, created_at) VALUES (?, ?, ?, ?, ?)`,
-    [submissionId, 'SUBMISSION_REOPENED', adminUser, notes || 'Organizer reopened submission for revisions.', now]
-  );
+  const client = await getClient();
+  try {
+    await client.query('BEGIN');
+    await client.query(`UPDATE submissions SET status = 'SUBMITTED', updated_at = $1 WHERE id = $2`, [now, submissionId]);
+    await client.query(
+      `INSERT INTO evaluation_events (submission_id, action, actor, notes, created_at) VALUES ($1, $2, $3, $4, NOW())`,
+      [submissionId, 'SUBMISSION_REOPENED', adminUser, notes || 'Organizer reopened submission for revisions.']
+    );
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 
   return await getAdminSubmissionById(submissionId);
 }
 
 export async function getPublicLeaderboard() {
-  const db = getDb();
   const settings = await getEventSettings();
   const isVisible = settings.leaderboard_visible === 'true';
 
@@ -310,16 +281,7 @@ export async function getPublicLeaderboard() {
     };
   }
 
-  // Leaderboard ranking rule: total_score DESC, submitted_at ASC (earlier final submission timestamp tie-breaker)
-  const rows = await db.all(`
-    SELECT sc.total_score, sc.track, s.submitted_at, t.name as team_name, t.code as team_code
-    FROM scores sc
-    JOIN submissions s ON sc.submission_id = s.id
-    JOIN teams t ON sc.team_id = t.id
-    WHERE s.status = 'FINAL'
-    ORDER BY sc.total_score DESC, s.submitted_at ASC
-  `);
-
+  const rows = await scoreRepository.getPublicLeaderboard();
   const entries = rows.map((r, index) => ({
     rank: index + 1,
     teamName: r.team_name,
@@ -335,16 +297,8 @@ export async function getPublicLeaderboard() {
 }
 
 export async function getAdminLeaderboard() {
-  const db = getDb();
   const settings = await getEventSettings();
-
-  const rows = await db.all(`
-    SELECT sc.*, s.submitted_at, s.status as submission_status, t.name as team_name, t.code as team_code
-    FROM scores sc
-    JOIN submissions s ON sc.submission_id = s.id
-    JOIN teams t ON sc.team_id = t.id
-    ORDER BY sc.total_score DESC, s.submitted_at ASC
-  `);
+  const rows = await scoreRepository.getAdminLeaderboard();
 
   return {
     settings,

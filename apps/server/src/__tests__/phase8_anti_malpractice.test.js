@@ -16,20 +16,21 @@ describe('PHASE 8 — EVENT CONTROL & ANTI-MALPRACTICE SUITE (22 REQUIREMENTS)',
     }
     db = await initDb();
 
+    // Clear event tables
+    await db.run(`DELETE FROM violations`);
+    await db.run(`DELETE FROM team_event_sessions`);
+    await db.run(`DELETE FROM event_admin_actions`);
+    await db.run(`DELETE FROM teams WHERE id IN (1, 2, 3, 4)`);
+
     // Insert test teams
     await db.run(
-      `INSERT OR REPLACE INTO teams (id, code, name, college, department, challenge, wallet, auction_eligible, login_enabled, pin, status)
+      `INSERT INTO teams (id, code, name, college, department, challenge, wallet, auction_eligible, login_enabled, pin, status)
        VALUES 
        (1, 'FS01', 'Alpha Coders', 'SNS Tech', 'IT', 'full-stack', 1000, 1, 1, '1234', 'ACTIVE'),
        (2, 'FS02', 'Beta Devs', 'SNS Tech', 'IT', 'full-stack', 1000, 1, 1, '1234', 'ACTIVE'),
        (3, 'CY01', 'CyberShield', 'SNS Tech', 'IT', 'cybersecurity', 1000, 1, 1, '1234', 'ACTIVE'),
        (4, 'CY02', 'NetGuard', 'SNS Tech', 'IT', 'cybersecurity', 1000, 1, 1, '1234', 'ACTIVE')`
     );
-
-    // Clear event tables
-    await db.run(`DELETE FROM violations`);
-    await db.run(`DELETE FROM team_event_sessions`);
-    await db.run(`DELETE FROM event_admin_actions`);
 
     // Reset event status to LIVE for initial tests
     await EventService.updateEventState('admin', 'LIVE', null, 'Initial setup for test suite');

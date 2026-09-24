@@ -21,6 +21,7 @@ export default function SubmissionsAdmin() {
   const [savingScore, setSavingScore] = useState(false);
   const [reopenNotes, setReopenNotes] = useState('');
   const [showReopenForm, setShowReopenForm] = useState(false);
+  const [confirmFinalize, setConfirmFinalize] = useState(false);
 
   async function loadSubmissions() {
     setLoading(true);
@@ -45,6 +46,7 @@ export default function SubmissionsAdmin() {
       setSelectedSub(detail);
       setShowReopenForm(false);
       setReopenNotes('');
+      setConfirmFinalize(false);
       if (detail.score) {
         setBugPoints(detail.score.bug_points || 0);
         setFunctionalPoints(detail.score.functional_points || 0);
@@ -67,9 +69,10 @@ export default function SubmissionsAdmin() {
     }
   }
 
-  async function handleEvaluate(targetStatus = 'EVALUATED') {
+  async function executeEvaluate(targetStatus = 'EVALUATED') {
     if (!selectedSub) return;
     setSavingScore(true);
+    setConfirmFinalize(false);
     try {
       const updated = await api.evaluateAdminSubmission(selectedSub.id, {
         status: targetStatus,
@@ -88,6 +91,14 @@ export default function SubmissionsAdmin() {
       alert('Evaluation failed: ' + err.message);
     } finally {
       setSavingScore(false);
+    }
+  }
+
+  function handleEvaluate(targetStatus = 'EVALUATED') {
+    if (targetStatus === 'FINAL') {
+      setConfirmFinalize(true);
+    } else {
+      executeEvaluate('EVALUATED');
     }
   }
 
@@ -293,7 +304,7 @@ export default function SubmissionsAdmin() {
                     </div>
 
                     <div>
-                      <label className="block text-xs font-bold text-zinc-300 mb-1">FUNCTIONAL TESTING (0 - 15)</label>
+                      <label className="block text-xs font-bold text-zinc-300 mb-1">E2E TESTING (0 - 15)</label>
                       <input
                         type="number"
                         min="0"
@@ -367,7 +378,7 @@ export default function SubmissionsAdmin() {
                     </div>
 
                     <div>
-                      <label className="block text-xs font-bold text-zinc-300 mb-1">RISK EXPLANATION & IMPACT (0 - 15)</label>
+                      <label className="block text-xs font-bold text-zinc-300 mb-1">RISK EXPLANATION (0 - 15)</label>
                       <input
                         type="number"
                         min="0"
@@ -514,6 +525,33 @@ export default function SubmissionsAdmin() {
                   </div>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Modal for Finalizing Score */}
+      {confirmFinalize && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-zinc-900 border border-amber-500/40 max-w-md w-full p-6 rounded-2xl shadow-2xl space-y-4">
+            <h3 className="text-lg font-black text-white uppercase">FINALIZE SUBMISSION SCORE?</h3>
+            <p className="text-xs text-zinc-300 leading-relaxed">
+              Are you sure you want to finalize the score of <strong className="text-amber-400">{calculatedTotal} / 100</strong> for team <strong className="text-white">{selectedSub?.team_name}</strong>? Finalized scores will publish to official rankings.
+            </p>
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                onClick={() => setConfirmFinalize(false)}
+                className="px-4 py-2 bg-zinc-800 text-zinc-300 text-xs font-bold rounded"
+              >
+                CANCEL
+              </button>
+              <button
+                onClick={() => executeEvaluate('FINAL')}
+                disabled={savingScore}
+                className="gold-button px-5 py-2 rounded text-xs font-bold uppercase"
+              >
+                CONFIRM & FINALIZE
+              </button>
             </div>
           </div>
         </div>

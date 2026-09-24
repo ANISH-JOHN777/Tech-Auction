@@ -7,95 +7,87 @@ SNS College of Technology
 
 ## 1. Operating Modes Overview
 
-### **A. LOCAL EVENT MODE (Recommended for College Event)**
-- **Architecture**: Single host laptop/server connected to a dedicated local Wi-Fi router / LAN switch.
-- **Backend Server**: Node.js running on Port `5000`.
-- **Database**: Embedded SQLite database file (`tech-auction.sqlite`).
-- **Frontend Web App**: Vite dev server or static build served over LAN on Port `5173`.
-- **Network**: All student laptops connect to host IP (e.g. `http://192.168.1.100:5173`).
+### **A. CLOUD FREE DEPLOYMENT (Recommended Architecture — ₹0 Cost)**
+- **Frontend**: Vercel Free Tier (Static Single Page Application built with Vite/React).
+- **Backend Service**: Render Free Web Service (Node.js + Express + Socket.IO on 0.0.0.0:${PORT}).
+- **Database**: Supabase Free PostgreSQL Pool (Server-authoritative PostgreSQL database with SSL).
+- **AI Assist**: Google Gemini API (Free Tier quota).
 
-### **B. NETWORKED / PRODUCTION MODE**
-- **Reverse Proxy**: NGINX / Caddy forwarding HTTP requests on Port `80`/`443` to Node backend.
-- **SSL / HTTPS**: Self-signed or Let's Encrypt certificate.
-- **Process Manager**: PM2 running Node server in background (`pm2 start apps/server/src/index.js --name "tech-auction-server"`).
+### **B. LOCAL / HYBRID CLOUD MODE**
+- **Backend Server**: Node.js running on Port `4000` (or `PORT`).
+- **Database**: Local or Remote PostgreSQL (`DATABASE_URL`).
+- **Frontend Web App**: Vite dev server or static build (`npm run build -w apps/web`).
 
 ---
 
 ## 2. Environment Variables Configuration
 
-| Variable | Description | Recommended Local Value | Production Value |
+| Variable | Description | Local / Development | Production Value |
 | :--- | :--- | :--- | :--- |
-| `PORT` | Node server port | `5000` | `5000` |
+| `PORT` | Node server port | `4000` | Provided automatically by Render (`process.env.PORT`) |
 | `NODE_ENV` | Environment mode | `development` | `production` |
-| `CLIENT_ORIGIN` | Authorized CORS origin | `http://localhost:5173` | `http://192.168.1.100:5173` |
+| `DATABASE_URL` | PostgreSQL connection string | `postgresql://postgres:postgres@localhost:5432/tech_auction` | Supabase Transaction Pooler URL (`postgresql://postgres.[ref]:[pass]@...supabase.com:6543/postgres`) |
+| `CLIENT_ORIGIN` | Authorized CORS origin | `http://localhost:5173` | Vercel production frontend URL (`https://tech-auction.vercel.app`) |
 | `ADMIN_USERNAME` | Organizer admin username | `admin` | `sns_admin_2026` |
 | `ADMIN_PASSWORD` | Organizer admin password | `admin123` | `[SECURE_ORGANIZER_PASS]` |
-| `GEMINI_API_KEY` | Google Gemini API Key | `AIzaSy...` | `[PRODUCTION_GEMINI_KEY]` |
-| `DB_PATH` | SQLite database file location | `./tech-auction.sqlite` | `/var/data/tech-auction.sqlite` |
+| `GEMINI_API_KEY` | Google Gemini API Key | `[API_KEY]` | `[PRODUCTION_GEMINI_KEY]` |
+| `SESSION_SECRET` | Secret key for signing sessions | `dev-secret-key-12345` | `[RANDOM_SECURE_SECRET]` |
 
 ---
 
-## 3. Step-by-Step Production Build & Start Commands
+## 3. Deployment Build & Execution Commands
 
 ### **Step 1: Install Dependencies**
 ```bash
 npm install
 ```
 
-### **Step 2: Build Web Frontend**
+### **Step 2: Run Database Migrations**
+```bash
+npm run db:migrate
+```
+
+### **Step 3: Seed Catalog & Initial Teams**
+```bash
+npm run db:seed
+```
+
+### **Step 4: Verify Database Health**
+```bash
+npm run db:health
+```
+
+### **Step 5: Build Web Frontend (Vercel Build Target)**
 ```bash
 npm run build -w apps/web
 ```
 *Creates optimized static distribution bundle in `apps/web/dist`.*
 
-### **Step 3: Start Node Production Server**
+### **Step 6: Start Production Server (Render Start Target)**
 ```bash
-node apps/server/src/index.js
-```
-*Server initializes database schema, seeds default catalog if empty, and listens for HTTP/WebSocket traffic.*
-
----
-
-## 4. Reverse Proxy Setup (NGINX Example)
-
-```nginx
-server {
-    listen 80;
-    server_name techauction.local;
-
-    # Frontend Static Assets
-    location / {
-        root /path/to/Tech Auction/apps/web/dist;
-        try_files $uri $uri/ /index.html;
-    }
-
-    # Backend API Proxy
-    location /api/ {
-        proxy_pass http://127.0.0.1:5000/api/;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_cache_bypass $http_upgrade;
-    }
-}
+npm run start -w apps/server
 ```
 
 ---
 
-## 5. SQLite Backup & Restore Procedure
+## 4. Reverse Proxy & CORS Configuration
 
-### **Backup Procedure**
-1. Ensure database is not locked by heavy write transactions.
-2. Copy `tech-auction.sqlite` to dated backup directory:
-   ```bash
-   cp apps/server/tech-auction.sqlite backups/tech-auction-backup-$(date +%Y%m%d_%H%M%S).sqlite
-   ```
+Render automatically places Node.js applications behind a reverse proxy handling TLS termination. `apps/server/src/app.js` is configured with:
+```javascript
+app.set('trust proxy', 1);
+```
+CORS headers allow requests from `CLIENT_ORIGIN` and `VITE_API_URL` endpoints, enabling credentials (`credentials: 'include'`).
 
-### **Restore Procedure**
-1. Stop backend server process.
-2. Replace `tech-auction.sqlite` with target backup file:
-   ```bash
-   cp backups/tech-auction-backup-target.sqlite apps/server/tech-auction.sqlite
-   ```
-3. Restart backend server.
+---
+
+## 5. PostgreSQL Database Backup & Restore
+
+### **Database Dump (Backup)**
+```bash
+pg_dump "$DATABASE_URL" -F c -b -v -f tech_auction_backup_$(date +%Y%m%d_%H%M%S).dump
+```
+
+### **Database Restore**
+```bash
+pg_restore --clean --if-exists --no-acl --no-owner -d "$DATABASE_URL" tech_auction_backup_target.dump
+```

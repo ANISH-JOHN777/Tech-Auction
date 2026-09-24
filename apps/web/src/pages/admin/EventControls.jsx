@@ -7,6 +7,8 @@ export default function EventControls() {
   const [loading, setLoading] = useState(true);
   const [deadlineInput, setDeadlineInput] = useState('');
   const [saving, setSaving] = useState(false);
+  const [confirmModal, setConfirmModal] = useState({ open: false, targetState: '', title: '', message: '' });
+  const [resetModal, setResetModal] = useState(false);
 
   async function loadData() {
     setLoading(true);
@@ -17,14 +19,8 @@ export default function EventControls() {
         setDeadlineInput(new Date(sData.challenge_deadline).toISOString().slice(0, 16));
       }
 
-      const token = localStorage.getItem('adminToken');
-      const sumRes = await fetch('/api/event/summary', {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (sumRes.ok) {
-        const sumData = await sumRes.json();
-        setSummary(sumData.data);
-      }
+      const sumData = await api.getEventSummary();
+      setSummary(sumData);
     } catch (err) {
       console.error('Failed to load event controls:', err);
     } finally {
@@ -38,33 +34,48 @@ export default function EventControls() {
     return () => clearInterval(interval);
   }, []);
 
-  async function handleStateChange(nextState) {
+  function requestStateChange(nextState) {
     if (nextState === 'ENDED') {
-      const confirmed = window.confirm('Ending the event will stop new challenge activity. Continue?');
-      if (!confirmed) return;
-    }
-
-    setSaving(true);
-    try {
-      const token = localStorage.getItem('adminToken');
-      const res = await fetch('/api/admin/event/state', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ status: nextState }),
+      setConfirmModal({
+        open: true,
+        targetState: 'ENDED',
+        title: 'END EVENT CONTEST?',
+        message: 'This will lock all competition actions (bidding, AI, submissions) for all participant teams.',
       });
+    } else if (nextState === 'PAUSED') {
+      setConfirmModal({
+        open: true,
+        targetState: 'PAUSED',
+        title: 'PAUSE EVENT?',
+        message: 'This will temporarily pause student bidding and submission actions until resumed.',
+      });
+    } else {
+      executeStateChange(nextState);
+    }
+  }
 
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error?.message || 'Failed to update event state');
-      }
-
+  async function executeStateChange(nextState) {
+    setSaving(true);
+    setConfirmModal({ open: false, targetState: '', title: '', message: '' });
+    try {
+      await api.updateAdminEventState(nextState);
       await loadData();
-      alert(`Event state changed to ${nextState}`);
     } catch (err) {
       alert('Error: ' + err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleResetDemoData() {
+    setSaving(true);
+    setResetModal(false);
+    try {
+      await api.resetDemoData();
+      await loadData();
+      alert('Demo data reset successfully!');
+    } catch (err) {
+      alert('Reset failed: ' + err.message);
     } finally {
       setSaving(false);
     }
@@ -113,7 +124,7 @@ export default function EventControls() {
     <div className="space-y-6">
       {/* HEADER BANNER */}
       <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-xl space-y-4">
-        <div className="flex justify-between items-start">
+        <div className="flex flex-wrap justify-between items-start gap-4">
           <div>
             <span className="text-xs text-amber-500 font-bold uppercase tracking-wider">
               ORGANIZER EVENT CONTROL
@@ -136,7 +147,7 @@ export default function EventControls() {
         <div className="flex flex-wrap gap-3 pt-2 border-t border-zinc-800">
           {currentStatus === 'SETUP' && (
             <button
-              onClick={() => handleStateChange('READY')}
+              onClick={() => requestStateChange('READY')}
               disabled={saving}
               className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded font-bold text-xs uppercase"
             >
@@ -146,17 +157,17 @@ export default function EventControls() {
 
           {(currentStatus === 'READY' || currentStatus === 'PAUSED') && (
             <button
-              onClick={() => handleStateChange('LIVE')}
+              onClick={() => requestStateChange('LIVE')}
               disabled={saving}
               className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded font-bold text-xs uppercase"
             >
-              {currentStatus === 'PAUSED' ? '[ RESUME EVENT ]' : '[ START EVENT ]'}
+              {currentStatus === 'PAUSED' ? '[ RESUME EVENT ]' : '[ START EVENT LIVE ]'}
             </button>
           )}
 
           {currentStatus === 'LIVE' && (
             <button
-              onClick={() => handleStateChange('PAUSED')}
+              onClick={() => requestStateChange('PAUSED')}
               disabled={saving}
               className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded font-bold text-xs uppercase"
             >
@@ -166,13 +177,21 @@ export default function EventControls() {
 
           {currentStatus !== 'ENDED' && (
             <button
-              onClick={() => handleStateChange('ENDED')}
+              onClick={() => requestStateChange('ENDED')}
               disabled={saving}
               className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded font-bold text-xs uppercase"
             >
               [ END EVENT ]
             </button>
           )}
+
+          <button
+            onClick={() => setResetModal(true)}
+            disabled={saving}
+            className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-amber-400 border border-amber-500/40 rounded font-bold text-xs uppercase ml-auto"
+          >
+            ⚠️ RESET DEMO DATA
+          </button>
         </div>
       </div>
 
@@ -272,6 +291,58 @@ export default function EventControls() {
           </form>
         </div>
       </div>
+
+      {/* CONFIRMATION MODAL FOR PAUSE / END */}
+      {confirmModal.open && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-zinc-900 border border-red-500/40 max-w-md w-full p-6 rounded-2xl shadow-2xl space-y-4">
+            <h3 className="text-lg font-black text-white uppercase">{confirmModal.title}</h3>
+            <p className="text-xs text-zinc-300 leading-relaxed">{confirmModal.message}</p>
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                onClick={() => setConfirmModal({ open: false, targetState: '', title: '', message: '' })}
+                className="px-4 py-2 bg-zinc-800 text-zinc-300 text-xs font-bold rounded"
+              >
+                CANCEL
+              </button>
+              <button
+                onClick={() => executeStateChange(confirmModal.targetState)}
+                disabled={saving}
+                className="bg-red-600 hover:bg-red-500 text-white px-5 py-2 rounded text-xs font-bold uppercase"
+              >
+                CONFIRM {confirmModal.targetState}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CONFIRMATION MODAL FOR RESET DEMO DATA */}
+      {resetModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-zinc-900 border border-amber-500/40 max-w-md w-full p-6 rounded-2xl shadow-2xl space-y-4">
+            <h3 className="text-lg font-black text-white uppercase">RESET DEMO DATA?</h3>
+            <p className="text-xs text-zinc-300 leading-relaxed">
+              This will restore all demo teams, reset auction rooms, clears submitted scores, and restore seed catalog items.
+            </p>
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                onClick={() => setResetModal(false)}
+                className="px-4 py-2 bg-zinc-800 text-zinc-300 text-xs font-bold rounded"
+              >
+                CANCEL
+              </button>
+              <button
+                onClick={handleResetDemoData}
+                disabled={saving}
+                className="gold-button px-5 py-2 rounded text-xs font-bold uppercase"
+              >
+                CONFIRM RESET
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

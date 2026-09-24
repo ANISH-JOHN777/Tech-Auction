@@ -2,6 +2,7 @@ import React from 'react';
 import AuctionPanel from '../components/AuctionPanel';
 import BidHistory from '../components/BidHistory';
 import WalletTransactions from '../components/WalletTransactions';
+import PurchasedAdvantages from '../components/PurchasedAdvantages';
 import AIAssist from '../components/AIAssist';
 import { useAuction } from '../hooks/useAuction';
 
@@ -19,6 +20,8 @@ export default function Auction({ challenge, team }) {
         error={error}
       />
 
+      <PurchasedAdvantages wallet={wallet} team={team} />
+
       <AIAssist />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -28,4 +31,3 @@ export default function Auction({ challenge, team }) {
     </div>
   );
 }
-

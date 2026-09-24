@@ -1,9 +1,13 @@
 import { io } from 'socket.io-client';
+import { SOCKET_URL } from '../config/api.js';
 
-const API_BASE_URL = 'http://localhost:4000';
-
-export const socket = io(API_BASE_URL, {
+export const socket = io(SOCKET_URL, {
   autoConnect: false,
+  reconnection: true,
+  reconnectionAttempts: Infinity,
+  reconnectionDelay: 1000,
+  reconnectionDelayMax: 5000,
+  transports: ['websocket', 'polling'],
 });
 
 export function connectSocket() {

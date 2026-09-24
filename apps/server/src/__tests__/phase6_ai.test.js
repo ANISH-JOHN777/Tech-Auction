@@ -22,9 +22,15 @@ describe('PHASE 6 — GEMINI AI ASSIST SUITE (18 REQUIREMENTS)', () => {
     }
     db = await initDb();
 
+    // Clean up test teams and items
+    await db.run(`DELETE FROM ai_usage_logs WHERE team_id IN (1, 2, 3)`);
+    await db.run(`DELETE FROM ai_entitlements WHERE team_id IN (1, 2, 3)`);
+    await db.run(`DELETE FROM teams WHERE id IN (1, 2, 3)`);
+    await db.run(`DELETE FROM auction_items WHERE id IN (5, 6)`);
+
     // Insert test teams
     await db.run(
-      `INSERT OR REPLACE INTO teams (id, code, name, college, department, challenge, wallet, auction_eligible, login_enabled, pin)
+      `INSERT INTO teams (id, code, name, college, department, challenge, wallet, auction_eligible, login_enabled, pin)
        VALUES 
        (1, 'FS01', 'Alpha Coders', 'SNS Tech', 'IT', 'full-stack', 1000, 1, 1, '1234'),
        (2, 'FS02', 'Beta Devs', 'SNS Tech', 'IT', 'full-stack', 1000, 1, 1, '1234'),
@@ -33,24 +39,14 @@ describe('PHASE 6 — GEMINI AI ASSIST SUITE (18 REQUIREMENTS)', () => {
 
     // Seed auction items for FS-05 (AI ASSIST FS) and CY-06 (AI ASSIST CY)
     await db.run(
-      `INSERT OR REPLACE INTO auction_items (id, item_code, name, track, item_type, starting_price, minimum_increment, duration_seconds, status, current_bid, highest_team_id)
+      `INSERT INTO auction_items (id, item_code, name, track, item_type, starting_price, minimum_increment, duration_seconds, status, current_bid, highest_team_id)
        VALUES 
        (5, 'FS-05', 'AI ASSIST FULLSTACK', 'full-stack', 'AI_ASSIST', 100, 25, 60, 'ACTIVE', 200, 1),
        (6, 'CY-06', 'AI ASSIST CYBER', 'cybersecurity', 'AI_ASSIST', 100, 25, 60, 'ACTIVE', 300, 3)`
     );
-
-    // Clean up any existing entitlements and logs
-    await db.run(`DELETE FROM ai_entitlements WHERE team_id IN (1, 2, 3)`);
-    await db.run(`DELETE FROM ai_usage_logs WHERE team_id IN (1, 2, 3)`);
   });
 
   after(async () => {
-    if (db) {
-      try { await db.close(); } catch (e) {}
-    }
-    if (fs.existsSync('./tech-auction-test.sqlite')) {
-      try { fs.unlinkSync('./tech-auction-test.sqlite'); } catch (e) {}
-    }
   });
 
   it('1. Non-AI winner cannot access AI (Status LOCKED)', async () => {

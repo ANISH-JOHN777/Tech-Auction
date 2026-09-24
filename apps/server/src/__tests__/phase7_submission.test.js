@@ -26,21 +26,22 @@ describe('PHASE 7 — SUBMISSION, EVALUATION & LEADERBOARD SUITE (20 REQUIREMENT
     }
     db = await initDb();
 
+    // Clean up tables
+    await db.run(`DELETE FROM evaluation_events`);
+    await db.run(`DELETE FROM scores`);
+    await db.run(`DELETE FROM submissions`);
+    await db.run(`DELETE FROM event_settings`);
+    await db.run(`DELETE FROM teams WHERE id IN (1, 2, 3, 4)`);
+
     // Insert test teams
     await db.run(
-      `INSERT OR REPLACE INTO teams (id, code, name, college, department, challenge, wallet, auction_eligible, login_enabled, pin)
+      `INSERT INTO teams (id, code, name, college, department, challenge, wallet, auction_eligible, login_enabled, pin)
        VALUES 
        (1, 'FS01', 'Alpha Coders', 'SNS Tech', 'IT', 'full-stack', 1000, 1, 1, '1234'),
        (2, 'FS02', 'Beta Devs', 'SNS Tech', 'IT', 'full-stack', 1000, 1, 1, '1234'),
        (3, 'CY01', 'CyberShield', 'SNS Tech', 'IT', 'cybersecurity', 1000, 1, 1, '1234'),
        (4, 'CY02', 'NetGuard', 'SNS Tech', 'IT', 'cybersecurity', 1000, 1, 1, '1234')`
     );
-
-    // Clean up tables
-    await db.run(`DELETE FROM evaluation_events`);
-    await db.run(`DELETE FROM scores`);
-    await db.run(`DELETE FROM submissions`);
-    await db.run(`DELETE FROM event_settings`);
 
     // Seed default settings
     const future = new Date(Date.now() + 7200000).toISOString();

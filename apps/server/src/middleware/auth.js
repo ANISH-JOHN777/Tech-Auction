@@ -1,4 +1,5 @@
-import { getDb } from '../db/database.js';
+import { sessionRepository } from '../db/repositories/session.repository.js';
+import { teamRepository } from '../db/repositories/team.repository.js';
 
 export async function requireAuth(req, res, next) {
   try {
@@ -15,11 +16,7 @@ export async function requireAuth(req, res, next) {
       });
     }
 
-    const db = getDb();
-    const session = await db.get(
-      `SELECT * FROM sessions WHERE token = ? AND expires_at > datetime('now')`,
-      [token]
-    );
+    const session = await sessionRepository.findByToken(token);
 
     if (!session) {
       return res.status(401).json({
@@ -41,7 +38,7 @@ export async function requireAuth(req, res, next) {
       });
     }
 
-    const team = await db.get(`SELECT * FROM teams WHERE code = ?`, [session.team_code]);
+    const team = await teamRepository.findByCode(session.team_code);
     if (!team) {
       return res.status(401).json({
         success: false,
@@ -62,8 +59,7 @@ export async function requireAuth(req, res, next) {
       });
     }
 
-    // Load team members
-    const members = await db.all(`SELECT id, name, email, phone, role FROM team_members WHERE team_id = ?`, [team.id]);
+    const members = await teamRepository.getMembers(team.id);
     team.members = members;
 
     req.team = team;
@@ -89,11 +85,7 @@ export async function requireAdminAuth(req, res, next) {
       });
     }
 
-    const db = getDb();
-    const session = await db.get(
-      `SELECT * FROM sessions WHERE token = ? AND user_type = 'admin' AND expires_at > datetime('now')`,
-      [token]
-    );
+    const session = await sessionRepository.findAdminByToken(token);
 
     if (!session) {
       return res.status(401).json({

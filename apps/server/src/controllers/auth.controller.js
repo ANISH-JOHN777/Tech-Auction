@@ -1,5 +1,6 @@
 import crypto from 'crypto';
-import { getDb } from '../db/database.js';
+import { teamRepository } from '../db/repositories/team.repository.js';
+import { sessionRepository } from '../db/repositories/session.repository.js';
 
 export async function login(req, res, next) {
   try {
@@ -14,8 +15,7 @@ export async function login(req, res, next) {
       });
     }
 
-    const db = getDb();
-    const team = await db.get('SELECT * FROM teams WHERE code = ?', [teamCode.trim().toUpperCase()]);
+    const team = await teamRepository.findByCode(teamCode);
 
     if (!team) {
       return res.status(401).json({
@@ -48,20 +48,20 @@ export async function login(req, res, next) {
       });
     }
 
-    // Fetch team members
-    const members = await db.all('SELECT id, name, email, phone, role FROM team_members WHERE team_id = ?', [team.id]);
+    const members = await teamRepository.getMembers(team.id);
     team.members = members;
 
     // Generate student session token
     const token = 'student_session_' + crypto.randomBytes(24).toString('hex');
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
-    await db.run(
-      `INSERT INTO sessions (token, team_code, user_type, created_at, expires_at) VALUES (?, ?, 'student', datetime('now'), ?)`,
-      [token, team.code, expiresAt]
-    );
+    await sessionRepository.createSession({
+      token,
+      teamCode: team.code,
+      userType: 'student',
+      expiresAt,
+    });
 
-    // Exclude PIN from response
     delete team.pin;
 
     res.json({
@@ -94,9 +94,8 @@ export async function getMe(req, res, next) {
 
 export async function logout(req, res, next) {
   try {
-    const db = getDb();
     if (req.token) {
-      await db.run(`DELETE FROM sessions WHERE token = ?`, [req.token]);
+      await sessionRepository.deleteByToken(req.token);
     }
     res.json({
       success: true,
@@ -131,10 +130,7 @@ export async function selectChallenge(req, res, next) {
       });
     }
 
-    const db = getDb();
-    await db.run('UPDATE teams SET challenge = ?, updated_at = datetime(\'now\') WHERE code = ?', [challenge, team.code]);
-
-    const updatedTeam = { ...team, challenge };
+    const updatedTeam = await teamRepository.updateChallenge(team.code, challenge);
     delete updatedTeam.pin;
 
     res.json({

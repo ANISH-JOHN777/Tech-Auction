@@ -1,18 +1,15 @@
-import { getDb } from '../db/database.js';
+import { query, getClient } from '../db/postgres.js';
 import { config } from '../config/env.js';
+import { walletRepository } from '../db/repositories/wallet.repository.js';
+import { auctionRepository } from '../db/repositories/auction.repository.js';
+import { bidRepository } from '../db/repositories/bid.repository.js';
+import { aiRepository } from '../db/repositories/ai.repository.js';
 
 export async function getTeamWallet(teamId) {
-  const db = getDb();
-  let wallet = await db.get('SELECT * FROM wallets WHERE team_id = ?', [teamId]);
+  let wallet = await walletRepository.findByTeamId(teamId);
   
   if (!wallet) {
-    const now = new Date().toISOString();
-    await db.run('INSERT INTO wallets (team_id, balance, held_balance, updated_at) VALUES (?, 1000, 0, ?)', [teamId, now]);
-    await db.run(
-      `INSERT INTO wallet_transactions (team_id, amount, type, description, created_at) VALUES (?, 1000, 'INITIAL_BALANCE', 'Default starting auction credits', ?)`,
-      [teamId, now]
-    );
-    wallet = await db.get('SELECT * FROM wallets WHERE team_id = ?', [teamId]);
+    wallet = await walletRepository.createWallet(teamId, 1000);
   }
 
   const available = wallet.balance - wallet.held_balance;
@@ -23,33 +20,29 @@ export async function getTeamWallet(teamId) {
 }
 
 export async function getWalletTransactions(teamId) {
-  const db = getDb();
-  return await db.all('SELECT * FROM wallet_transactions WHERE team_id = ? ORDER BY id DESC', [teamId]);
+  return await walletRepository.getTransactions(teamId);
 }
 
 export async function getAuctionRoomState(track) {
   if (!['full-stack', 'cybersecurity'].includes(track)) {
     return null;
   }
-  const db = getDb();
-  const room = await db.get('SELECT * FROM auction_rooms WHERE track = ?', [track]);
+  const room = await auctionRepository.getRoomByTrack(track);
   if (!room) return null;
 
   let currentItem = null;
   let bidHistory = [];
 
   if (room.current_item_id) {
-    currentItem = await db.get('SELECT * FROM auction_items WHERE id = ?', [room.current_item_id]);
+    currentItem = await auctionRepository.getItemById(room.current_item_id);
     if (currentItem) {
       if (currentItem.highest_team_id) {
-        const leader = await db.get('SELECT name, code FROM teams WHERE id = ?', [currentItem.highest_team_id]);
+        const leaderRes = await query('SELECT name, code FROM teams WHERE id = $1', [currentItem.highest_team_id]);
+        const leader = leaderRes.rows[0];
         currentItem.highest_team_name = leader?.name || '—';
         currentItem.highest_team_code = leader?.code || '—';
       }
-      bidHistory = await db.all(
-        'SELECT id, amount, team_code, team_name, created_at FROM bids WHERE item_id = ? ORDER BY id DESC LIMIT 20',
-        [currentItem.id]
-      );
+      bidHistory = await bidRepository.getBidsForItem(currentItem.id, 20);
     }
   }
 
@@ -61,13 +54,10 @@ export async function getAuctionRoomState(track) {
 }
 
 export async function getAuctionCatalog(track) {
-  const db = getDb();
-  return await db.all('SELECT * FROM auction_items WHERE track = ? ORDER BY id ASC', [track]);
+  return await auctionRepository.getCatalog(track);
 }
 
 export async function placeAtomicBid({ team, amount }) {
-  const db = getDb();
-
   // 1. Validation Checks
   if (!team || team.auction_eligible !== 1) {
     const err = new Error('Your team is not eligible to participate in the auction.');
@@ -84,7 +74,7 @@ export async function placeAtomicBid({ team, amount }) {
     throw err;
   }
 
-  const room = await db.get('SELECT * FROM auction_rooms WHERE track = ?', [track]);
+  const room = await auctionRepository.getRoomByTrack(track);
   if (!room || room.status !== 'ACTIVE' || !room.current_item_id) {
     const err = new Error('Auction room is not currently active for bidding.');
     err.statusCode = 409;
@@ -92,7 +82,7 @@ export async function placeAtomicBid({ team, amount }) {
     throw err;
   }
 
-  const item = await db.get('SELECT * FROM auction_items WHERE id = ?', [room.current_item_id]);
+  const item = await auctionRepository.getItemById(room.current_item_id);
   if (!item || item.status !== 'ACTIVE') {
     const err = new Error('The current auction item is not active.');
     err.statusCode = 409;
@@ -136,11 +126,21 @@ export async function placeAtomicBid({ team, amount }) {
     throw err;
   }
 
-  // Begin atomic SQLite transaction to prevent race conditions
-  await db.exec('BEGIN IMMEDIATE');
+  // Begin atomic PostgreSQL transaction with ROW LOCKING (FOR UPDATE)
+  const client = await getClient();
   try {
-    // Re-verify item inside transaction
-    const lockedItem = await db.get('SELECT * FROM auction_items WHERE id = ?', [item.id]);
+    await client.query('BEGIN');
+
+    // 1. Lock Target Auction Item Row
+    const itemLockRes = await client.query(
+      'SELECT * FROM auction_items WHERE id = $1 FOR UPDATE',
+      [item.id]
+    );
+    const lockedItem = itemLockRes.rows[0];
+    if (!lockedItem || lockedItem.status !== 'ACTIVE') {
+      throw new Error('Target auction item is no longer active.');
+    }
+
     const currentHighest = lockedItem.current_bid;
     const prevHighestTeamId = lockedItem.highest_team_id;
 
@@ -152,8 +152,12 @@ export async function placeAtomicBid({ team, amount }) {
       throw new Error(`Another bid of ${currentHighest} credits was accepted. Your bid of ${numericAmount} is too low.`);
     }
 
-    // Check bidder wallet balance inside transaction
-    const bidderWallet = await db.get('SELECT * FROM wallets WHERE team_id = ?', [team.id]);
+    // 2. Lock Bidding Team Wallet Row
+    const bidderWalletRes = await client.query(
+      'SELECT * FROM wallets WHERE team_id = $1 FOR UPDATE',
+      [team.id]
+    );
+    const bidderWallet = bidderWalletRes.rows[0];
     if (!bidderWallet) {
       throw new Error('Wallet not initialized for team.');
     }
@@ -170,47 +174,60 @@ export async function placeAtomicBid({ team, amount }) {
 
     const txTime = new Date().toISOString();
 
-    // 1. Release previous bidder's hold if different team
+    // 3. Lock and Release Previous Bidder's Hold if different team
     if (prevHighestTeamId && prevHighestTeamId !== team.id) {
-      const prevWallet = await db.get('SELECT * FROM wallets WHERE team_id = ?', [prevHighestTeamId]);
+      const prevWalletRes = await client.query(
+        'SELECT * FROM wallets WHERE team_id = $1 FOR UPDATE',
+        [prevHighestTeamId]
+      );
+      const prevWallet = prevWalletRes.rows[0];
       if (prevWallet) {
-        await db.run(
-          'UPDATE wallets SET held_balance = MAX(0, held_balance - ?), updated_at = ? WHERE team_id = ?',
+        await client.query(
+          'UPDATE wallets SET held_balance = GREATEST(0, held_balance - $1), updated_at = $2 WHERE team_id = $3',
           [currentHighest, txTime, prevHighestTeamId]
         );
-        await db.run(
-          `INSERT INTO wallet_transactions (team_id, amount, type, description, reference_id, created_at)
-           VALUES (?, ?, 'BID_RELEASE', ?, ?, ?)`,
-          [prevHighestTeamId, currentHighest, `Outbid on item ${lockedItem.item_code}`, lockedItem.id.toString(), txTime]
-        );
+        await walletRepository.recordTransaction({
+          teamId: prevHighestTeamId,
+          amount: currentHighest,
+          type: 'BID_RELEASE',
+          description: `Outbid on item ${lockedItem.item_code}`,
+          referenceId: lockedItem.id.toString(),
+          client,
+        });
       }
     }
 
-    // 2. Hold new bidder's credits
-    await db.run(
-      'UPDATE wallets SET held_balance = held_balance + ?, updated_at = ? WHERE team_id = ?',
+    // 4. Hold new bidder's credits
+    await client.query(
+      'UPDATE wallets SET held_balance = held_balance + $1, updated_at = $2 WHERE team_id = $3',
       [additionalHold, txTime, team.id]
     );
-    await db.run(
-      `INSERT INTO wallet_transactions (team_id, amount, type, description, reference_id, created_at)
-       VALUES (?, ?, 'BID_HOLD', ?, ?, ?)`,
-      [team.id, numericAmount, `Active bid hold for item ${lockedItem.item_code}`, lockedItem.id.toString(), txTime]
-    );
+    await walletRepository.recordTransaction({
+      teamId: team.id,
+      amount: numericAmount,
+      type: 'BID_HOLD',
+      description: `Active bid hold for item ${lockedItem.item_code}`,
+      referenceId: lockedItem.id.toString(),
+      client,
+    });
 
-    // 3. Update auction item
-    await db.run(
-      'UPDATE auction_items SET current_bid = ?, highest_team_id = ? WHERE id = ?',
+    // 5. Update auction item
+    await client.query(
+      'UPDATE auction_items SET current_bid = $1, highest_team_id = $2 WHERE id = $3',
       [numericAmount, team.id, lockedItem.id]
     );
 
-    // 4. Insert bid log entry
-    await db.run(
-      `INSERT INTO bids (room_id, item_id, team_id, team_code, team_name, amount, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [room.id, lockedItem.id, team.id, team.code, team.name, numericAmount, txTime]
-    );
+    // 6. Insert bid log entry
+    await bidRepository.recordBid({
+      roomId: room.id,
+      itemId: lockedItem.id,
+      teamId: team.id,
+      teamCode: team.code,
+      teamName: team.name,
+      amount: numericAmount,
+    }, client);
 
-    await db.exec('COMMIT');
+    await client.query('COMMIT');
 
     const updatedRoomState = await getAuctionRoomState(track);
     const updatedWallet = await getTeamWallet(team.id);
@@ -222,15 +239,16 @@ export async function placeAtomicBid({ team, amount }) {
       bidAmount: numericAmount,
     };
   } catch (err) {
-    await db.exec('ROLLBACK');
+    await client.query('ROLLBACK');
     if (!err.statusCode) err.statusCode = 400;
     throw err;
+  } finally {
+    client.release();
   }
 }
 
 export async function finalizeExpiredItem(itemId) {
-  const db = getDb();
-  const item = await db.get('SELECT * FROM auction_items WHERE id = ?', [itemId]);
+  const item = await auctionRepository.getItemById(itemId);
   if (!item || item.status !== 'ACTIVE') return null;
 
   const now = new Date().toISOString();
@@ -238,72 +256,81 @@ export async function finalizeExpiredItem(itemId) {
   if (item.highest_team_id && item.current_bid > 0) {
     const winnerTeamId = item.highest_team_id;
     const winningBid = item.current_bid;
-    const winnerTeam = await db.get('SELECT * FROM teams WHERE id = ?', [winnerTeamId]);
+    const winnerTeamRes = await query('SELECT * FROM teams WHERE id = $1', [winnerTeamId]);
+    const winnerTeam = winnerTeamRes.rows[0];
 
-    await db.exec('BEGIN IMMEDIATE');
+    const client = await getClient();
     try {
+      await client.query('BEGIN');
+
       // 1. Mark item as SOLD
-      await db.run("UPDATE auction_items SET status = 'SOLD' WHERE id = ?", [item.id]);
+      await client.query("UPDATE auction_items SET status = 'SOLD' WHERE id = $1", [item.id]);
 
       // 2. Record Winner
-      await db.run(
-        'INSERT INTO auction_winners (item_id, team_id, winning_bid, created_at) VALUES (?, ?, ?, ?)',
-        [item.id, winnerTeamId, winningBid, now]
+      await client.query(
+        'INSERT INTO auction_winners (item_id, team_id, winning_bid, created_at) VALUES ($1, $2, $3, NOW()) ON CONFLICT (item_id) DO NOTHING',
+        [item.id, winnerTeamId, winningBid]
       );
 
       // 3. Finalize Winner Wallet
-      await db.run(
-        'UPDATE wallets SET balance = balance - ?, held_balance = MAX(0, held_balance - ?), updated_at = ? WHERE team_id = ?',
-        [winningBid, winningBid, now, winnerTeamId]
+      await client.query(
+        'UPDATE wallets SET balance = balance - $1, held_balance = GREATEST(0, held_balance - $1), updated_at = $2 WHERE team_id = $3',
+        [winningBid, now, winnerTeamId]
       );
 
       // 4. Record ITEM_PURCHASE transaction
-      await db.run(
-        `INSERT INTO wallet_transactions (team_id, amount, type, description, reference_id, created_at)
-         VALUES (?, ?, 'ITEM_PURCHASE', ?, ?, ?)`,
-        [winnerTeamId, -winningBid, `Purchased auction item ${item.item_code}: ${item.name}`, item.id.toString(), now]
-      );
+      await walletRepository.recordTransaction({
+        teamId: winnerTeamId,
+        amount: -winningBid,
+        type: 'ITEM_PURCHASE',
+        description: `Purchased auction item ${item.item_code}: ${item.name}`,
+        referenceId: item.id.toString(),
+        client,
+      });
 
       // 5. IF ITEM IS AI ASSIST (FS-05 or CY-06 or item_type === 'AI_ASSIST'), create AVAILABLE entitlement!
       if (item.item_type === 'AI_ASSIST' || item.item_code === 'FS-05' || item.item_code === 'CY-06') {
         const duration = config.aiDurationSeconds || 900;
-        await db.run(
-          `INSERT INTO ai_entitlements (team_id, team_code, track, auction_item_id, provider, duration_seconds, status, request_count, created_at, updated_at)
-           VALUES (?, ?, ?, ?, 'gemini', ?, 'AVAILABLE', 0, ?, ?)`,
-          [winnerTeamId, winnerTeam?.code || 'TEAM', item.track, item.id, duration, now, now]
-        );
+        await aiRepository.createEntitlement({
+          teamId: winnerTeamId,
+          teamCode: winnerTeam?.code || 'TEAM',
+          track: item.track,
+          auctionItemId: item.id,
+          durationSeconds: duration,
+        }, client);
         console.log(`[AUCTION ENGINE] Created AVAILABLE AI entitlement for team ${winnerTeam?.code} (Track: ${item.track}).`);
       }
 
-      await db.exec('COMMIT');
+      await client.query('COMMIT');
     } catch (err) {
-      await db.exec('ROLLBACK');
+      await client.query('ROLLBACK');
       console.error('[AUCTION ENGINE] Finalize winner failed:', err);
+    } finally {
+      client.release();
     }
   } else {
     // Unsold item
-    await db.run("UPDATE auction_items SET status = 'UNSOLD' WHERE id = ?", [item.id]);
+    await auctionRepository.updateItem(item.id, { status: 'UNSOLD' });
   }
 
   // Update room state
-  const nextItem = await db.get("SELECT * FROM auction_items WHERE track = ? AND status = 'PENDING' ORDER BY id ASC LIMIT 1", [item.track]);
+  const nextItem = await auctionRepository.getNextPendingItem(item.track);
   if (!nextItem) {
-    await db.run("UPDATE auction_rooms SET status = 'COMPLETED', current_item_id = NULL WHERE track = ?", [item.track]);
+    await auctionRepository.updateRoomStatus(item.track, 'COMPLETED', null);
   } else {
-    await db.run("UPDATE auction_rooms SET status = 'WAITING', current_item_id = ? WHERE track = ?", [nextItem.id, item.track]);
+    await auctionRepository.updateRoomStatus(item.track, 'WAITING', nextItem.id);
   }
 
   return await getAuctionRoomState(item.track);
 }
 
 export async function manualWalletAdjustment({ teamId, amount, description }) {
-  const db = getDb();
   const numericAmount = Number(amount);
   if (isNaN(numericAmount) || numericAmount === 0) {
     throw new Error('Adjustment amount must be a non-zero integer.');
   }
 
-  const wallet = await db.get('SELECT * FROM wallets WHERE team_id = ?', [teamId]);
+  const wallet = await walletRepository.findByTeamId(teamId);
   if (!wallet) {
     throw new Error('Team wallet not found.');
   }
@@ -312,12 +339,6 @@ export async function manualWalletAdjustment({ teamId, amount, description }) {
     throw new Error(`Adjustment would result in negative balance. Current: ${wallet.balance} credits.`);
   }
 
-  const now = new Date().toISOString();
-  await db.run('UPDATE wallets SET balance = balance + ?, updated_at = ? WHERE team_id = ?', [numericAmount, now, teamId]);
-  await db.run(
-    `INSERT INTO wallet_transactions (team_id, amount, type, description, created_at) VALUES (?, ?, 'ADMIN_ADJUSTMENT', ?, ?)`,
-    [teamId, numericAmount, description || 'Admin balance adjustment', now]
-  );
-
+  await walletRepository.adjustBalance({ teamId, amount: numericAmount, description });
   return await getTeamWallet(teamId);
 }

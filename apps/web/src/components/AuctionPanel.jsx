@@ -41,8 +41,13 @@ export default function AuctionPanel({ challenge, roomState, wallet, onBid, bidd
   const trackLabel = challenge === 'full-stack' ? 'Full-Stack Development' : 'Cybersecurity';
   const highestTeamName = currentItem?.highest_team_name || 'No bids placed yet';
 
+  const totalBalance = wallet?.balance ?? wallet?.total ?? 0;
+  const heldBalance = wallet?.held_balance ?? wallet?.held ?? 0;
+  const availableBalance = wallet?.available_balance ?? (totalBalance - heldBalance);
+
   return (
     <div className="bg-zinc-900 border border-amber-500/30 p-6 rounded-xl shadow-xl gold-glow-border space-y-6">
+      {/* Header & Track Isolation */}
       <div className="flex flex-wrap justify-between items-center pb-4 border-b border-zinc-800 gap-2">
         <div>
           <span className="text-xs font-bold text-amber-500 tracking-wider uppercase">
@@ -51,19 +56,29 @@ export default function AuctionPanel({ challenge, roomState, wallet, onBid, bidd
           <h2 className="text-xl font-black text-white">Track: {trackLabel}</h2>
         </div>
 
-        <div className="flex items-center gap-2">
-          <span
-            className={`w-2.5 h-2.5 rounded-full ${
-              roomStatus === 'ACTIVE'
-                ? 'bg-emerald-500 animate-pulse'
-                : roomStatus === 'PAUSED'
-                ? 'bg-amber-500'
-                : 'bg-zinc-600'
-            }`}
-          ></span>
-          <span className="text-xs text-zinc-300 font-mono font-bold uppercase">
-            ROOM STATUS: {roomStatus}
-          </span>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 font-mono text-xs bg-zinc-950 px-3 py-1.5 rounded border border-zinc-800">
+            <span className="text-zinc-400">Available Credits:</span>
+            <span className="text-emerald-400 font-bold">{availableBalance.toLocaleString()}</span>
+            <span className="text-zinc-600">|</span>
+            <span className="text-zinc-400">Held:</span>
+            <span className="text-amber-400 font-bold">{heldBalance.toLocaleString()}</span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span
+              className={`w-2.5 h-2.5 rounded-full ${
+                roomStatus === 'ACTIVE'
+                  ? 'bg-emerald-500 animate-pulse'
+                  : roomStatus === 'PAUSED'
+                  ? 'bg-amber-500'
+                  : 'bg-zinc-600'
+              }`}
+            ></span>
+            <span className="text-xs text-zinc-300 font-mono font-bold uppercase">
+              ROOM STATUS: {roomStatus}
+            </span>
+          </div>
         </div>
       </div>
 
@@ -111,8 +126,8 @@ export default function AuctionPanel({ challenge, roomState, wallet, onBid, bidd
           </div>
 
           {error && (
-            <div className="bg-red-500/10 border border-red-500/30 text-red-400 text-xs p-3 rounded-lg">
-              {error}
+            <div className="bg-red-500/10 border border-red-500/30 text-red-400 text-xs p-3 rounded-lg font-mono">
+              ⚠️ {error}
             </div>
           )}
 
@@ -132,7 +147,6 @@ export default function AuctionPanel({ challenge, roomState, wallet, onBid, bidd
             >
               {bidding ? 'SUBMITTING…' : `PLACE BID (${Number(bidInput || minNextBid).toLocaleString()} CREDITS)`}
             </button>
-
           </form>
         </div>
       ) : (
