@@ -4,7 +4,7 @@ import { fileURLToPath } from 'url';
 import { query } from '../db/postgres.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const CHALLENGES_ROOT = path.resolve(__dirname, '../../../challenges');
+const CHALLENGES_ROOT = path.resolve(__dirname, '../../../../challenges');
 
 const TRACK_BASE_DIRS = {
   'full-stack': path.join(CHALLENGES_ROOT, 'full-stack/CampusConnect'),

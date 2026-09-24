@@ -80,7 +80,7 @@ describe('PHASE 10 — IN-PORTAL DEBUG WORKSPACE (PHASE 2 BACKEND SUITE)', () =>
     }
   });
 
-  it('1. Authenticated workspace access succeeds', async () => {
+  it('1. Authenticated workspace access succeeds and loads non-empty challenge templates', async () => {
     const res = await fetch(`${baseUrl}/api/workspace/files`, {
       headers: { Authorization: `Bearer ${tokenTeam1}` },
     });
@@ -89,7 +89,14 @@ describe('PHASE 10 — IN-PORTAL DEBUG WORKSPACE (PHASE 2 BACKEND SUITE)', () =>
     assert.equal(json.success, true);
     assert.equal(json.data.track, 'full-stack');
     assert.ok(Array.isArray(json.data.files));
-    assert.ok(json.data.files.length > 0);
+    assert.equal(json.data.files.length, 12);
+    assert.ok(json.data.files.every((f) => typeof f.content === 'string' && f.content.length > 0));
+
+    // Verify Cybersecurity template files load non-empty content
+    const cyWorkspace = await getWorkspaceFiles(103, 'cybersecurity');
+    assert.equal(cyWorkspace.track, 'cybersecurity');
+    assert.equal(cyWorkspace.files.length, 13);
+    assert.ok(cyWorkspace.files.every((f) => typeof f.content === 'string' && f.content.length > 0));
   });
 
   it('2. Unauthenticated request is rejected (401)', async () => {
