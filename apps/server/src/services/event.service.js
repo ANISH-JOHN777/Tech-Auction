@@ -244,6 +244,8 @@ export class EventService {
     const activeTeams = allTeams.filter((t) => t.status === 'ACTIVE').length;
     const suspendedTeams = allTeams.filter((t) => t.status === 'SUSPENDED').length;
     const disqualifiedTeams = allTeams.filter((t) => t.status === 'DISQUALIFIED').length;
+    const fullStackTeams = allTeams.filter((t) => (t.challenge || t.track || '').toLowerCase().includes('full')).length;
+    const cybersecurityTeams = allTeams.filter((t) => (t.challenge || t.track || '').toLowerCase().includes('cyber')).length;
 
     const submittedTeamsCount = await submissionRepository.countDistinctSubmittedTeams();
 
@@ -262,13 +264,18 @@ export class EventService {
       challenge_deadline: settings.challenge_deadline || null,
       leaderboard_visible: settings.leaderboard_visible === 'true',
       registered_teams: totalTeamsCount,
+      total_teams: totalTeamsCount,
       eligible_teams: eligibleTeams,
       active_teams: activeTeams,
       suspended_teams: suspendedTeams,
       disqualified_teams: disqualifiedTeams,
+      full_stack_teams: fullStackTeams,
+      cybersecurity_teams: cybersecurityTeams,
       submitted_teams: submittedTeamsCount,
+      submissions_count: submittedTeamsCount,
       flagged_teams: flaggedTeamIds.size,
       open_violations: openViolationsList.length,
+      violations_count: openViolationsList.length,
       latest_events: latestEvents,
       active_sessions: activeSessions,
     };

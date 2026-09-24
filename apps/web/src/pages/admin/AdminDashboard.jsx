@@ -61,7 +61,7 @@ export default function AdminDashboard({ admin, onLogout }) {
           </div>
           <div className="bg-zinc-900 p-3 rounded-lg border border-zinc-800 font-mono">
             <span className="text-[10px] text-zinc-500 uppercase block">TOTAL TEAMS</span>
-            <span className="text-sm font-black text-white">{summary.total_teams || 0}</span>
+            <span className="text-sm font-black text-white">{summary.registered_teams ?? summary.total_teams ?? 0}</span>
           </div>
           <div className="bg-zinc-900 p-3 rounded-lg border border-zinc-800 font-mono">
             <span className="text-[10px] text-zinc-500 uppercase block">ACTIVE / SUSP</span>
@@ -77,11 +77,11 @@ export default function AdminDashboard({ admin, onLogout }) {
           </div>
           <div className="bg-zinc-900 p-3 rounded-lg border border-zinc-800 font-mono">
             <span className="text-[10px] text-zinc-500 uppercase block">SUBMISSIONS</span>
-            <span className="text-sm font-black text-blue-400">{summary.submissions_count || 0}</span>
+            <span className="text-sm font-black text-blue-400">{summary.submitted_teams ?? summary.submissions_count ?? 0}</span>
           </div>
           <div className="bg-zinc-900 p-3 rounded-lg border border-zinc-800 font-mono">
             <span className="text-[10px] text-zinc-500 uppercase block">VIOLATIONS</span>
-            <span className="text-sm font-black text-red-400">{summary.violations_count || 0}</span>
+            <span className="text-sm font-black text-red-400">{summary.open_violations ?? summary.violations_count ?? 0}</span>
           </div>
         </div>
       )}

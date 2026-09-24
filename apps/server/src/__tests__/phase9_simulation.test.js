@@ -91,6 +91,19 @@ describe('PHASE 9 — FULL TECH AUCTION EVENT SIMULATION & HARDENING SUITE', () 
     // Invalid PIN failure simulation
     const invalidPin = await db.get("SELECT * FROM teams WHERE code = 'FS01' AND pin = 'WRONG'");
     assert.ok(!invalidPin);
+
+    // Admin Dashboard Event Summary KPI contract verification
+    const summary = await EventService.getEventSummary();
+    assert.equal(summary.registered_teams, 6);
+    assert.equal(summary.total_teams, 6);
+    assert.equal(summary.active_teams, 6);
+    assert.equal(summary.suspended_teams, 0);
+    assert.equal(summary.full_stack_teams, 3);
+    assert.equal(summary.cybersecurity_teams, 3);
+    assert.equal(summary.submitted_teams, 0);
+    assert.equal(summary.submissions_count, 0);
+    assert.equal(summary.open_violations, 0);
+    assert.equal(summary.violations_count, 0);
   });
 
   it('Phase C — Challenge Track Lock', async () => {
