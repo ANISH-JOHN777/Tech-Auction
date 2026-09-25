@@ -3,6 +3,7 @@ import { api } from '../services/api';
 
 export function useAuth() {
   const [team, setTeam] = useState(null);
+  const [student, setStudent] = useState(null);
   const [token, setToken] = useState(localStorage.getItem('tech_auction_token'));
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -15,12 +16,14 @@ export function useAuth() {
       }
       try {
         const data = await api.getMe();
-        setTeam(data.team);
+        setTeam(data.team || null);
+        setStudent(data.student || null);
       } catch (err) {
         console.warn('Student session invalid:', err.message);
         localStorage.removeItem('tech_auction_token');
         setToken(null);
         setTeam(null);
+        setStudent(null);
       } finally {
         setLoading(false);
       }
@@ -35,7 +38,36 @@ export function useAuth() {
       localStorage.setItem('tech_auction_token', data.token);
       setToken(data.token);
       setTeam(data.team);
+      setStudent(data.student || null);
       return data.team;
+    } catch (err) {
+      setError(err.message);
+      throw err;
+    }
+  }
+
+  async function studentLogin(studentCode, pin) {
+    setError('');
+    try {
+      const data = await api.studentLogin(studentCode, pin);
+      localStorage.setItem('tech_auction_token', data.token);
+      setToken(data.token);
+      setStudent(data.student);
+      setTeam(data.team || null);
+      return data;
+    } catch (err) {
+      setError(err.message);
+      throw err;
+    }
+  }
+
+  async function joinOrCreateTeam(teamName, track) {
+    setError('');
+    try {
+      const data = await api.joinOrCreateTeam(teamName, track);
+      setTeam(data.team);
+      setStudent(data.student);
+      return data;
     } catch (err) {
       setError(err.message);
       throw err;
@@ -51,6 +83,7 @@ export function useAuth() {
     localStorage.removeItem('tech_auction_token');
     setToken(null);
     setTeam(null);
+    setStudent(null);
   }
 
   async function selectChallenge(challengeName) {
@@ -67,12 +100,16 @@ export function useAuth() {
 
   return {
     team,
+    student,
     token,
     loading,
     error,
     login,
+    studentLogin,
+    joinOrCreateTeam,
     logout,
     selectChallenge,
     setTeam,
+    setStudent,
   };
 }

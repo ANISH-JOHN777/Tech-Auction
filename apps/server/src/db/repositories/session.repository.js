@@ -19,14 +19,22 @@ export const sessionRepository = {
     return res.rows[0] || null;
   },
 
-  async createSession({ token, teamCode = 'ADMIN', userType = 'student', expiresAt }) {
+  async createSession({ token, teamCode = null, studentId = null, userType = 'student', expiresAt }) {
     const res = await query(
-      `INSERT INTO sessions (token, team_code, user_type, created_at, expires_at)
-       VALUES ($1, $2, $3, NOW(), $4)
+      `INSERT INTO sessions (token, team_code, student_id, user_type, created_at, expires_at)
+       VALUES ($1, $2, $3, $4, NOW(), $5)
        RETURNING *`,
-      [token, teamCode, userType, expiresAt]
+      [token, teamCode, studentId, userType, expiresAt]
     );
     return res.rows[0];
+  },
+
+  async updateSessionTeam(token, teamCode) {
+    const res = await query(
+      'UPDATE sessions SET team_code = $1 WHERE token = $2 RETURNING *',
+      [teamCode, token]
+    );
+    return res.rows[0] || null;
   },
 
   async deleteByToken(token) {

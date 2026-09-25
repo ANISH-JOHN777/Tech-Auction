@@ -39,6 +39,12 @@ export function createMemPool() {
     returns: memDb.public.getType('timestamp with time zone'),
     implementation: () => new Date(),
   });
+  memDb.public.registerFunction({
+    name: 'trim',
+    args: [memDb.public.getType('text')],
+    returns: memDb.public.getType('text'),
+    implementation: (str) => (typeof str === 'string' ? str.trim() : str),
+  });
 
   const adapter = memDb.adapters.createPg();
   isMemFallback = true;

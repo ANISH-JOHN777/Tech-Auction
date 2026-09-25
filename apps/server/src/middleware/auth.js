@@ -1,5 +1,6 @@
 import { sessionRepository } from '../db/repositories/session.repository.js';
 import { teamRepository } from '../db/repositories/team.repository.js';
+import { studentRepository } from '../db/repositories/student.repository.js';
 
 export async function requireAuth(req, res, next) {
   try {
@@ -38,30 +39,35 @@ export async function requireAuth(req, res, next) {
       });
     }
 
-    const team = await teamRepository.findByCode(session.team_code);
-    if (!team) {
-      return res.status(401).json({
-        success: false,
-        error: {
-          code: 'TEAM_NOT_FOUND',
-          message: 'Associated team no longer exists.',
-        },
-      });
+    let student = null;
+    let team = null;
+
+    if (session.student_id) {
+      student = await studentRepository.findById(session.student_id);
+      if (student && student.team_id) {
+        team = await teamRepository.findById(student.team_id);
+      }
     }
 
-    if (!team.login_enabled) {
-      return res.status(403).json({
-        success: false,
-        error: {
-          code: 'LOGIN_DISABLED',
-          message: 'Login for your team has been disabled by the organizer.',
-        },
-      });
+    if (!team && session.team_code) {
+      team = await teamRepository.findByCode(session.team_code);
     }
 
-    const members = await teamRepository.getMembers(team.id);
-    team.members = members;
+    if (team) {
+      if (!team.login_enabled) {
+        return res.status(403).json({
+          success: false,
+          error: {
+            code: 'LOGIN_DISABLED',
+            message: 'Login for your team has been disabled by the organizer.',
+          },
+        });
+      }
+      team.members = await teamRepository.getMembers(team.id);
+    }
 
+    req.session = session;
+    req.student = student;
     req.team = team;
     req.token = token;
     next();

@@ -1,5 +1,6 @@
 import { query, getClient } from './postgres.js';
 import { runMigrations } from './migrate.js';
+import { studentRepository } from './repositories/student.repository.js';
 
 export async function ensureAuctionRooms() {
   const check = await query("SELECT COUNT(*)::int as count FROM auction_rooms");
@@ -11,6 +12,20 @@ export async function ensureAuctionRooms() {
     `);
     console.log('[SEED] Initialized auction rooms.');
   }
+}
+
+export async function ensureStudentPool() {
+  const defaultPin = process.env.STUDENT_DEFAULT_PIN || '1234';
+  for (let i = 1; i <= 40; i++) {
+    const code = `STU${i.toString().padStart(3, '0')}`;
+    await studentRepository.createStudent({
+      studentCode: code,
+      pin: defaultPin,
+      name: `Student ${code}`,
+      teamId: null,
+    });
+  }
+  console.log('[SEED] Ensured 40 student accounts (STU001..STU040) in database.');
 }
 
 export async function ensureEventSettings() {
@@ -94,7 +109,7 @@ export async function seedDemoData() {
 
     // Clean tables using DELETE FROM
     const tablesToClean = [
-      'ai_usage_logs', 'ai_entitlements', 'wallet_transactions', 'wallets', 'bids',
+      'team_cleared_bugs', 'students', 'ai_usage_logs', 'ai_entitlements', 'wallet_transactions', 'wallets', 'bids',
       'auction_winners', 'team_members', 'registrations', 'evaluation_events',
       'scores', 'submissions', 'violations', 'team_event_sessions', 'event_admin_actions',
       'teams', 'auction_items'
@@ -181,6 +196,7 @@ export async function seedDemoData() {
   await ensureAuctionRooms();
   await ensureEventSettings();
   await ensureWalletsAndCatalog();
+  await ensureStudentPool();
 
   console.log('[SEED] PostgreSQL database seeded successfully with demo teams and catalog.');
 }

@@ -46,6 +46,8 @@ export async function request(endpoint, options = {}, isAdmin = false) {
 export const api = {
   // Student API
   login: (teamCode, pin) => request('/api/login', { method: 'POST', body: JSON.stringify({ teamCode, pin }) }),
+  studentLogin: (studentCode, pin) => request('/api/auth/student-login', { method: 'POST', body: JSON.stringify({ studentCode, pin }) }),
+  joinOrCreateTeam: (teamName, track) => request('/api/auth/team/join-or-create', { method: 'POST', body: JSON.stringify({ teamName, track }) }),
   logout: () => request('/api/logout', { method: 'POST' }),
   getMe: () => request('/api/me', { method: 'GET' }),
   selectChallenge: (challenge) => request('/api/team/challenge', { method: 'POST', body: JSON.stringify({ challenge }) }),

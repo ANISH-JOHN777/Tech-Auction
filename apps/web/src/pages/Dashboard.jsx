@@ -12,7 +12,7 @@ import Leaderboard from './Leaderboard';
 import DebugWorkspace from './DebugWorkspace';
 import { api } from '../services/api';
 
-export default function Dashboard({ team, onSelectChallenge, error }) {
+export default function Dashboard({ team, student, onSelectChallenge, error }) {
   const [activeTab, setActiveTab] = useState('auction');
   const [eventSettings, setEventSettings] = useState({});
   const [submissionStatus, setSubmissionStatus] = useState('NOT SUBMITTED');
@@ -42,7 +42,7 @@ export default function Dashboard({ team, onSelectChallenge, error }) {
   const challengeTitle = team?.challenge === 'full-stack' ? 'CampusConnect' : team?.challenge === 'cybersecurity' ? 'SecureVault' : null;
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8 space-y-8 relative">
+    <div className="max-w-6xl mx-auto px-4 py-8 space-y-8 relative font-sans">
       <EventMonitor isLive={true} />
       <ConnectionStatus />
       <EventStateOverlay
@@ -53,6 +53,18 @@ export default function Dashboard({ team, onSelectChallenge, error }) {
       {/* Overview Status Summary Badges */}
       <div className="bg-zinc-900 border border-zinc-800 p-4 rounded-xl flex flex-wrap gap-4 items-center justify-between shadow-lg font-mono text-xs">
         <div className="flex flex-wrap gap-4 items-center">
+          {student?.student_code && (
+            <div className="flex items-center gap-2">
+              <span className="text-zinc-500">STUDENT:</span>
+              <span className="text-amber-400 font-bold">{student.student_code}</span>
+            </div>
+          )}
+
+          <div className="flex items-center gap-2">
+            <span className="text-zinc-500">TEAM:</span>
+            <span className="text-white font-bold">{team?.name}</span>
+          </div>
+
           <div className="flex items-center gap-2">
             <span className="text-zinc-500">EVENT:</span>
             <span className={`font-bold px-2 py-0.5 rounded ${

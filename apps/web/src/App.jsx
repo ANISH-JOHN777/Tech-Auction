@@ -8,7 +8,7 @@ import { useAuth } from './hooks/useAuth';
 import { useAdminAuth } from './hooks/useAdminAuth';
 
 export default function App() {
-  const { team, loading: studentLoading, error: studentError, login, logout, selectChallenge } = useAuth();
+  const { team, student, loading: studentLoading, error: studentError, login, studentLogin, joinOrCreateTeam, logout, selectChallenge } = useAuth();
   const { admin, loading: adminLoading, error: adminError, adminLogin, adminLogout } = useAdminAuth();
 
   const [isAdminView, setIsAdminView] = useState(
@@ -61,10 +61,17 @@ export default function App() {
             <AdminDashboard admin={admin} onLogout={adminLogout} />
           )
         ) : !team ? (
-          <Login onLogin={login} error={studentError} />
+          <Login
+            onStudentLogin={studentLogin}
+            onJoinOrCreateTeam={joinOrCreateTeam}
+            onLogin={login}
+            student={student}
+            error={studentError}
+          />
         ) : (
           <Dashboard
             team={team}
+            student={student}
             onSelectChallenge={selectChallenge}
             error={studentError}
           />

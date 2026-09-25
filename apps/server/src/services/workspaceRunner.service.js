@@ -1,4 +1,6 @@
 import { getWorkspaceFiles, validateTrack, checkWorkspaceUnlocked } from './workspace.service.js';
+import { scoreRepository } from '../db/repositories/score.repository.js';
+import { walletRepository } from '../db/repositories/wallet.repository.js';
 
 /**
  * Controlled Assertion Runner Engine for Tech Auction 2026 Debug Workspace.
@@ -20,6 +22,21 @@ export async function runControlledWorkspaceTests(teamId, track) {
     testResults = runCybersecurityAssertions(fileMap);
   }
 
+  // Filter allowed assertion IDs for team's assigned track to prevent cross-track assertion crediting
+  const allowedAssertionIds = track === 'full-stack'
+    ? ['FS_SEARCH_FILTER', 'FS_API_RESPONSE', 'FS_STATUS_UPDATE', 'FS_SUBMISSION']
+    : ['CY_PASSWORD_EXPOSURE', 'CY_IDOR_AUTHORIZATION', 'CY_SESSION_REVOCATION', 'CY_XSS_PROTECTION'];
+
+  for (const r of testResults) {
+    if (r.status === 'PASS' && allowedAssertionIds.includes(r.id)) {
+      await scoreRepository.recordClearedBug(teamId, track, r.id);
+    }
+  }
+
+  const clearedList = await scoreRepository.getClearedBugs(teamId);
+  const wallet = await walletRepository.findByTeamId(teamId);
+  const remainingCredits = wallet ? (wallet.balance - wallet.held_balance) : 1000;
+
   const passedCount = testResults.filter((r) => r.status === 'PASS').length;
   const failedCount = testResults.filter((r) => r.status === 'FAIL').length;
 
@@ -28,7 +45,11 @@ export async function runControlledWorkspaceTests(teamId, track) {
       passed: passedCount,
       failed: failedCount,
       total: testResults.length,
+      bugsCleared: clearedList.length,
+      bugsTotal: allowedAssertionIds.length,
+      remainingCredits,
     },
+    clearedBugs: clearedList.map((b) => b.assertion_key),
     results: testResults,
   };
 }
